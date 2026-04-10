@@ -110,7 +110,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid #d5e1f4;
   border-radius: 10px;
@@ -122,7 +123,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: none;
   border-color: #2a7be4;
   box-shadow: 0 0 0 3px rgba(42, 123, 228, 0.16);
@@ -366,3 +368,5 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+

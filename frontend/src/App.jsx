@@ -13,6 +13,8 @@ const initialForm = {
   description: "",
   style: "",
   ratioKey: "square",
+  logoMode: "fixed",
+  logoPosition: "top_right",
 };
 
 function App() {
@@ -107,6 +109,8 @@ function App() {
         highlights,
         description: form.description.trim(),
         logo_id: logoInfo?.logo_id || null,
+        logo_mode: form.logoMode,
+        logo_position: form.logoMode === "fixed" ? form.logoPosition : null,
       };
 
       const generated = await generatePoster(payload);
@@ -213,6 +217,30 @@ function App() {
 
           <div className="section">
             <h2>品牌 Logo（可选）</h2>
+            <div className="form-group">
+              <select
+                value={form.logoMode}
+                onChange={(e) => updateField("logoMode", e.target.value)}
+              >
+                <option value="fixed">固定位置模式（推荐）</option>
+                <option value="ai">AI 自由融合模式</option>
+              </select>
+
+              {form.logoMode === "fixed" ? (
+                <select
+                  value={form.logoPosition}
+                  onChange={(e) => updateField("logoPosition", e.target.value)}
+                >
+                  <option value="top_left">左上角</option>
+                  <option value="top_right">右上角</option>
+                  <option value="bottom_left">左下角</option>
+                  <option value="bottom_right">右下角</option>
+                </select>
+              ) : (
+                <input type="text" value="AI 自动决定位置与融合风格" readOnly />
+              )}
+            </div>
+
             <div className="upload-row">
               <input type="file" accept="image/*" onChange={onUploadLogo} />
               <div className="upload-info">

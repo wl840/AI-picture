@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GeneratePosterRequest(BaseModel):
@@ -16,11 +16,23 @@ class GeneratePosterRequest(BaseModel):
     highlights: List[str] = Field(default_factory=list)
     description: Optional[str] = Field(default="")
     logo_id: Optional[str] = None
+    logo_mode: Literal["fixed", "ai"] = Field(default="fixed")
+    logo_position: Optional[Literal["top_left", "top_right", "bottom_left", "bottom_right"]] = Field(
+        default="top_right"
+    )
 
     @field_validator("base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def normalize_logo_settings(self) -> "GeneratePosterRequest":
+        if self.logo_mode == "fixed" and not self.logo_position:
+            self.logo_position = "top_right"
+        if self.logo_mode == "ai":
+            self.logo_position = None
+        return self
 
 
 class GeneratePosterResponse(BaseModel):

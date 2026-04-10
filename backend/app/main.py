@@ -2,14 +2,13 @@
 
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .poster_config import ASPECT_RATIOS, STYLES, TEMPLATES
-from .prompt_engineering import build_poster_prompt
 from .schemas import GeneratePosterRequest, GeneratePosterResponse, UploadLogoResponse
-from .services.image_provider import ImageProviderService
+from .services.poster_service import PosterService
 from .services.storage import StorageService
 
 app = FastAPI(title="AI Poster Module API", version="1.0.0")
@@ -58,33 +57,5 @@ async def upload_logo(file: UploadFile = File(...)) -> UploadLogoResponse:
 
 @app.post("/api/poster/generate", response_model=GeneratePosterResponse)
 async def generate_poster(req: GeneratePosterRequest) -> GeneratePosterResponse:
-    logo_filename = None
-    logo_data_url = None
-
-    if req.logo_id:
-        matches = list(UPLOAD_DIR.glob(f"{req.logo_id}.*"))
-        if not matches:
-            raise HTTPException(status_code=404, detail="logo_id 无效或文件不存在")
-        logo_filename = matches[0].name
-        logo_data_url = StorageService.logo_to_data_url(logo_filename)
-
-    prompt = build_poster_prompt(
-        template_key=req.template_key,
-        product_name=req.product_name,
-        highlights=req.highlights,
-        style=req.style,
-        description=req.description,
-        ratio_key=req.ratio_key,
-        logo_filename=logo_filename,
-    )
-
-    generated = await ImageProviderService.generate_image(
-        api_key=req.api_key,
-        base_url=req.base_url,
-        model=req.model,
-        prompt=prompt,
-        ratio_key=req.ratio_key,
-        logo_base64_data_url=logo_data_url,
-    )
-
-    return GeneratePosterResponse(prompt=prompt, **generated)
+    result = await PosterService.generate_poster(req, UPLOAD_DIR)
+    return GeneratePosterResponse(**result)

@@ -12,6 +12,101 @@ def _template_meta(template_key: str) -> dict:
     return TEMPLATES[0]
 
 
+def _position_label(position: Optional[str]) -> str:
+    mapping = {
+        "top_left": "左上角",
+        "top_right": "右上角",
+        "bottom_left": "左下角",
+        "bottom_right": "右下角",
+    }
+    return mapping.get(position or "top_right", "右上角")
+
+
+def _join_highlights(highlights: List[str]) -> str:
+    return "；".join([h.strip() for h in highlights if h.strip()]) or "突出核心卖点"
+
+
+def build_prompt(
+    product_name: str,
+    style: str,
+    position: str,
+    logo_mode: str,
+    *,
+    highlights_text: str = "",
+    description_text: str = "",
+    ratio_label: str = "方形",
+    ratio_size: str = "1024x1024",
+    logo_filename: Optional[str] = None,
+) -> str:
+    """
+    通用商品海报 Prompt：
+    - fixed：产品图优先，禁止模板化结构，并预留 logo 区域
+    - ai：允许 logo 融合，但强约束 logo 不可变形/重绘
+    """
+    base = f"""
+设计一张电商产品海报。
+
+【产品主体】
+产品是：{product_name}
+必须生成该产品的真实视觉形象（写实风格）
+
+【核心要求】
+1. 产品必须清晰可见，并作为画面主体
+2. 产品占据视觉中心
+3. 产品细节清晰（材质、结构、光影）
+
+【风格】
+- {style}
+- 商业广告质感
+- 干净背景
+
+【布局】
+- 中间：产品主体
+- 上方：标题
+- 下方：辅助文案
+
+【禁止】
+- 不要生成无关字符或标识
+- 不要生成信息卡片
+- 不要出现“产品名称”“CTA”“占位文本”
+- 不要模板结构
+- 不要只有文字
+
+
+【补充信息】
+- 比例：{ratio_label}（{ratio_size}）
+- 卖点：{highlights_text if highlights_text else '无'}
+- 描述：{description_text if description_text else '无'}
+""".strip()
+
+    if logo_mode == "fixed":
+        # fixed 模式：模型不处理 logo，只预留留白。
+        return (
+            base
+            + f"""
+
+【Logo】
+请在{position}预留空白区域用于放置logo
+不要在该区域生成任何图形或文字
+不要生成任何品牌图标、徽章、占位框
+"""
+        ).strip()
+
+    # ai 模式：允许融合 logo，但严格约束 logo 真实性。
+    return (
+        base
+        + f"""
+
+【Logo】
+已提供品牌logo参考图（{logo_filename or '上传的logo图片'}）
+必须使用提供logo，保持原始形状与比例
+不要重新设计logo，不要生成假logo
+不要生成占位框、边框、替代图标
+logo应自然融入画面，但不得遮挡产品主体
+"""
+    ).strip()
+
+
 def build_poster_prompt(
     *,
     template_key: str,
@@ -20,47 +115,27 @@ def build_poster_prompt(
     style: str,
     description: Optional[str],
     ratio_key: str,
+    logo_mode: str,
+    logo_position: Optional[str],
     logo_filename: Optional[str] = None,
 ) -> str:
+    """兼容现有调用，内部转发到新 build_prompt。"""
     template = _template_meta(template_key)
     ratio = ASPECT_RATIOS.get(ratio_key, ASPECT_RATIOS["square"])
-
-    highlights_text = "；".join([h.strip() for h in highlights if h.strip()]) or "突出核心价值"
+    highlights_text = _join_highlights(highlights)
     description_text = description.strip() if description else ""
 
-    if logo_filename:
-        logo_rule = (
-            f"\n[Logo 规则]\n"
-            f"- 已上传品牌 logo 文件：{logo_filename}。\n"
-            f"- logo 仅作为角标使用，放在右下角或右上角。\n"
-            f"- logo 宽度约为画面宽度 5%-8%，不得放大居中，不得作为主视觉主体。\n"
-            f"- 保持 logo 原有形状与可识别性，不得拉伸变形。"
-        )
-    else:
-        logo_rule = (
-            "\n[Logo 规则]\n"
-            "- 本次无 logo 输入，不要生成 logo 占位框，不要绘制中间圆形徽章。"
-        )
+    # 把模板语气融入 style，避免额外模板化字样进入输出。
+    merged_style = f"{style}，{template['tone']}"
 
-    return f"""
-你是一名资深品牌视觉设计师，请根据以下信息生成一张中文营销海报图像。
-
-[海报目标]
-- 模板类型：{template['name']}（{template['description']}）
-- 视觉语气：{template['tone']}
-- 风格：{style}
-- 尺寸比例：{ratio['label']}，建议画布 {ratio['size']}
-
-[素材信息]
-- 名称：{product_name}
-- 核心卖点：{highlights_text}
-- 补充描述：{description_text if description_text else '无'}
-{logo_rule}
-
-[文案与排版规则]
-1. 只输出自然营销文案，不要出现字段标签词。
-2. 严禁出现“产品/活动名称”“核心卖点”“补充描述”“行动号召（CTA）”“模板”“字段”等提示词原文。
-3. 文案层级清晰：主标题、副标题、卖点短句、行动号召。
-4. 保留适度留白，主体突出，风格和配色统一。
-5. 输出高质量可直接投放的海报图，文字清晰可读，不乱码。
-""".strip()
+    return build_prompt(
+        product_name=product_name,
+        style=merged_style,
+        position=_position_label(logo_position),
+        logo_mode=logo_mode,
+        highlights_text=highlights_text,
+        description_text=description_text,
+        ratio_label=ratio["label"],
+        ratio_size=ratio["size"],
+        logo_filename=logo_filename,
+    )
