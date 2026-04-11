@@ -27,3 +27,4 @@ backend/app/uploads/*
 frontend/.npm-cache/
 *.log
 
+frontend/.vite/
