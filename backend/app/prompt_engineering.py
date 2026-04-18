@@ -139,3 +139,87 @@ def build_poster_prompt(
         ratio_size=ratio["size"],
         logo_filename=logo_filename,
     )
+
+PRODUCT_SET_TYPES = {
+    "main": "主图",
+    "detail": "细节特写",
+    "selling_point": "卖点图",
+    "scene": "产品应用场景图",
+    "spec": "尺寸规格图",
+}
+
+
+def build_product_set_prompt(
+    *,
+    image_type: str,
+    product_name: str,
+    style: str,
+    ratio_key: str,
+    highlights: List[str],
+    description: Optional[str],
+    scene_description: Optional[str],
+    specs: List[str],
+) -> str:
+    ratio = ASPECT_RATIOS.get(ratio_key, ASPECT_RATIOS["square"])
+    highlights_text = _join_highlights(highlights)
+    description_text = description.strip() if description else ""
+    scene_text = scene_description.strip() if scene_description else ""
+    specs_text = "；".join([s.strip() for s in specs if s.strip()]) or "未提供"
+
+    common = f"""
+你是资深电商视觉设计师。将参考图中的产品作为唯一主体，保持产品外观一致（形状、颜色、材质、结构）。
+
+【产品】
+- 名称：{product_name}
+- 风格：{style}
+- 比例：{ratio['label']}（{ratio['size']}）
+- 卖点：{highlights_text}
+- 描述：{description_text if description_text else '无'}
+
+【严格要求】
+1. 不得替换产品，不得改变产品核心结构
+2. 产品主体必须清晰可见，构图专业
+3. 不要出现水印、乱码、品牌logo、二维码
+4. 除尺寸规格图外，尽量不出现大段文字
+""".strip()
+
+    if image_type == "main":
+        extra = """
+【画面类型】主图
+- 纯净背景或浅色渐变背景
+- 产品完整展示，居中或黄金分割构图
+- 商业广告级打光，强调质感
+""".strip()
+    elif image_type == "detail":
+        extra = """
+【画面类型】细节特写
+- 近距离微距视角，放大材质与做工细节
+- 可使用浅景深，突出纹理与结构
+- 保留产品辨识度，避免抽象化
+""".strip()
+    elif image_type == "selling_point":
+        extra = """
+【画面类型】卖点图
+- 用构图和视觉元素表现卖点，不依赖长文字
+- 画面预留少量留白，便于后期补充文案
+- 重点突出性能、材质或功能亮点
+""".strip()
+    elif image_type == "scene":
+        extra = f"""
+【画面类型】产品应用场景图
+- 产品置于真实使用场景中，主体仍然突出
+- 场景补充：{scene_text if scene_text else '家居/办公/户外等自然使用环境'}
+- 场景元素为陪衬，避免喧宾夺主
+""".strip()
+    elif image_type == "spec":
+        extra = f"""
+【画面类型】尺寸规格图
+- 生成简洁信息图风格画面
+- 展示产品整体及尺寸标注线
+- 尺寸信息：{specs_text}
+- 数据标注清晰、排版整齐
+""".strip()
+    else:
+        extra = "【画面类型】通用产品图"
+
+    return f"{common}\n\n{extra}".strip()

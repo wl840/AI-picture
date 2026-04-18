@@ -5,7 +5,7 @@ import binascii
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import httpx
 from fastapi import HTTPException
@@ -56,16 +56,30 @@ class ImageProviderService:
         return "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
     @staticmethod
+    def _merge_reference_images(
+        logo_base64_data_url: Optional[str],
+        reference_images_data_urls: Optional[Sequence[str]],
+    ) -> list[str]:
+        merged: list[str] = []
+        if reference_images_data_urls:
+            for value in reference_images_data_urls:
+                if value and value not in merged:
+                    merged.append(value)
+        if logo_base64_data_url and logo_base64_data_url not in merged:
+            merged.append(logo_base64_data_url)
+        return merged
+
+    @staticmethod
     def _build_dashscope_payload(
         *,
         model: str,
         prompt: str,
         size: str,
-        logo_base64_data_url: Optional[str],
+        reference_images_data_urls: Sequence[str],
     ) -> dict:
         content: list[dict[str, str]] = []
-        if logo_base64_data_url:
-            content.append({"image": logo_base64_data_url})
+        for image_data_url in reference_images_data_urls:
+            content.append({"image": image_data_url})
         content.append({"text": prompt})
 
         return {
@@ -90,9 +104,13 @@ class ImageProviderService:
         model: str,
         prompt: str,
         size: str,
-        logo_base64_data_url: Optional[str],
+        reference_images_data_urls: Sequence[str],
     ) -> tuple[str, dict]:
-        if logo_base64_data_url:
+        if reference_images_data_urls:
+            content = [{"type": "input_text", "text": prompt}]
+            for image_data_url in reference_images_data_urls:
+                content.append({"type": "input_image", "image_url": image_data_url})
+
             return (
                 "/responses",
                 {
@@ -100,10 +118,7 @@ class ImageProviderService:
                     "input": [
                         {
                             "role": "user",
-                            "content": [
-                                {"type": "input_text", "text": prompt},
-                                {"type": "input_image", "image_url": logo_base64_data_url},
-                            ],
+                            "content": content,
                         }
                     ],
                     "tools": [{"type": "image_generation"}],
@@ -225,6 +240,7 @@ class ImageProviderService:
         prompt: str,
         ratio_key: str,
         logo_base64_data_url: Optional[str] = None,
+        reference_images_data_urls: Optional[Sequence[str]] = None,
     ) -> dict:
         size = ASPECT_RATIOS.get(ratio_key, ASPECT_RATIOS["square"])["size"]
         headers = {
@@ -233,6 +249,10 @@ class ImageProviderService:
         }
 
         is_dashscope = ImageProviderService._is_dashscope(model=model, base_url=base_url)
+        merged_images = ImageProviderService._merge_reference_images(
+            logo_base64_data_url=logo_base64_data_url,
+            reference_images_data_urls=reference_images_data_urls,
+        )
 
         if is_dashscope:
             provider = "dashscope"
@@ -241,7 +261,7 @@ class ImageProviderService:
                 model=model,
                 prompt=prompt,
                 size=size,
-                logo_base64_data_url=logo_base64_data_url,
+                reference_images_data_urls=merged_images,
             )
         else:
             provider = "openai-compatible"
@@ -249,7 +269,7 @@ class ImageProviderService:
                 model=model,
                 prompt=prompt,
                 size=size,
-                logo_base64_data_url=logo_base64_data_url,
+                reference_images_data_urls=merged_images,
             )
             endpoint = f"{base_url.rstrip('/')}{path}"
 

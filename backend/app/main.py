@@ -7,8 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .poster_config import ASPECT_RATIOS, STYLES, TEMPLATES
-from .schemas import GeneratePosterRequest, GeneratePosterResponse, UploadLogoResponse
+from .schemas import (
+    GeneratePosterRequest,
+    GeneratePosterResponse,
+    GenerateProductSetRequest,
+    GenerateProductSetResponse,
+    UploadLogoResponse,
+    UploadProductImageResponse,
+)
 from .services.poster_service import PosterService
+from .services.product_set_service import ProductSetService
 from .services.storage import StorageService
 
 app = FastAPI(title="AI Poster Module API", version="1.0.0")
@@ -59,3 +67,19 @@ async def upload_logo(file: UploadFile = File(...)) -> UploadLogoResponse:
 async def generate_poster(req: GeneratePosterRequest) -> GeneratePosterResponse:
     result = await PosterService.generate_poster(req, UPLOAD_DIR)
     return GeneratePosterResponse(**result)
+
+
+@app.post("/api/product/upload-image", response_model=UploadProductImageResponse)
+async def upload_product_image(file: UploadFile = File(...)) -> UploadProductImageResponse:
+    product_image_id, filename = await StorageService.save_product_image(file)
+    return UploadProductImageResponse(
+        product_image_id=product_image_id,
+        filename=filename,
+        url=f"/static/uploads/{filename}",
+    )
+
+
+@app.post("/api/product/generate-set", response_model=GenerateProductSetResponse)
+async def generate_product_set(req: GenerateProductSetRequest) -> GenerateProductSetResponse:
+    result = await ProductSetService.generate_product_set(req, UPLOAD_DIR)
+    return GenerateProductSetResponse(**result)
