@@ -45,7 +45,7 @@ function App() {
         setForm((prev) => ({
           ...prev,
           templateKey: data.templates?.[0]?.key || "festival_promo",
-          style: data.styles?.[0] || "简约商务",
+          style: data.styles?.[0]?.key || "american_comic",
           ratioKey: Object.keys(data.aspect_ratios || {})[0] || "square",
         }));
       } catch (err) {
@@ -256,7 +256,7 @@ function App() {
                 onChange={(e) => updateField("highlightsText", e.target.value)}
               />
               <textarea
-                placeholder="产品描述（可选）"
+                placeholder="角色/场景描述（可选，如：两只穿西装的猫咪）"
                 value={form.description}
                 onChange={(e) => updateField("description", e.target.value)}
               />
@@ -280,12 +280,12 @@ function App() {
             <div className="chips">
               {(options?.styles || []).map((style) => (
                 <button
-                  key={style}
+                  key={style.key}
                   type="button"
-                  className={`chip ${form.style === style ? "active" : ""}`}
-                  onClick={() => updateField("style", style)}
+                  className={`chip ${form.style === style.key ? "active" : ""}`}
+                  onClick={() => updateField("style", style.key)}
                 >
-                  {style}
+                  {style.name}
                 </button>
               ))}
             </div>
@@ -312,26 +312,14 @@ function App() {
             <h2>品牌 Logo（海报模式可选）</h2>
             <div className="form-group">
               <select
-                value={form.logoMode}
-                onChange={(e) => updateField("logoMode", e.target.value)}
+                value={form.logoPosition}
+                onChange={(e) => updateField("logoPosition", e.target.value)}
               >
-                <option value="fixed">固定位置模式（推荐）</option>
-                <option value="ai">AI 自由融合模式</option>
+                <option value="top_left">左上角</option>
+                <option value="top_right">右上角（默认）</option>
+                <option value="bottom_left">左下角</option>
+                <option value="bottom_right">右下角</option>
               </select>
-
-              {form.logoMode === "fixed" ? (
-                <select
-                  value={form.logoPosition}
-                  onChange={(e) => updateField("logoPosition", e.target.value)}
-                >
-                  <option value="top_left">左上角</option>
-                  <option value="top_right">右上角</option>
-                  <option value="bottom_left">左下角</option>
-                  <option value="bottom_right">右下角</option>
-                </select>
-              ) : (
-                <input type="text" value="AI 自动决定位置与融合风格" readOnly />
-              )}
             </div>
 
             <div className="upload-row">

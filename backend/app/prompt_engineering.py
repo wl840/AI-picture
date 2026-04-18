@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import List, Optional
 
-from .poster_config import ASPECT_RATIOS, TEMPLATES
+from .poster_config import ASPECT_RATIOS, STYLE_MAP, TEMPLATES
 
 
 def _template_meta(template_key: str) -> dict:
@@ -26,85 +26,70 @@ def _join_highlights(highlights: List[str]) -> str:
     return "；".join([h.strip() for h in highlights if h.strip()]) or "突出核心卖点"
 
 
+def _resolve_style_desc(style_key: str) -> str:
+    entry = STYLE_MAP.get(style_key)
+    return entry["prompt_description"] if entry else style_key
+
+
+def _build_dialogue_product_prompt(
+    product_name: str,
+    style_desc: str,
+    ratio_label: str,
+    ratio_size: str,
+    character_hint: str,
+    highlights_text: str,
+) -> str:
+    characters = character_hint if character_hint else "两个或更多角色（人物或动物均可）"
+    return f"""
+设计一张动画风格产品宣传海报。
+
+【画面主体】
+产品：{product_name}
+{characters}正在使用或展示该产品，形成对话或互动场景
+角色表情生动，肢体语言自然，场景富有叙事感
+
+【核心要求】
+1. 产品必须突出，作为画面焦点
+2. 角色与产品的互动自然，体现产品的使用场景
+3. 整体构图完整，具备海报视觉张力
+
+【风格】
+- {style_desc}
+- 插画海报质感
+
+【布局】
+- 产品置于构图显眼位置，角色围绕产品互动
+- 背景与角色风格统一，层次丰富但不喧宾夺主
+
+【禁止】
+- 不要出现无关文字、水印或logo
+- 不要生成写实照片风格
+- 不要模板化空白占位结构
+
+【补充信息】
+- 比例：{ratio_label}（{ratio_size}）
+- 产品卖点：{highlights_text if highlights_text else "无"}
+""".strip()
+
+
 def build_prompt(
     product_name: str,
     style: str,
-    position: str,
-    logo_mode: str,
     *,
     highlights_text: str = "",
     description_text: str = "",
     ratio_label: str = "方形",
     ratio_size: str = "1024x1024",
-    logo_filename: Optional[str] = None,
 ) -> str:
-    """
-    通用商品海报 Prompt：
-    - fixed：产品图优先，禁止模板化结构，并预留 logo 区域
-    - ai：允许 logo 融合，但强约束 logo 不可变形/重绘
-    """
-    base = f"""
-设计一张电商产品海报。
-
-【产品主体】
-产品是：{product_name}
-必须生成该产品的真实视觉形象（写实风格）
-
-【核心要求】
-1. 产品必须清晰可见，并作为画面主体
-2. 产品占据视觉中心
-3. 产品细节清晰（材质、结构、光影）
-
-【风格】
-- {style}
-- 商业广告质感
-- 干净背景
-
-【布局】
-- 中间：产品主体
-- 上方：标题
-- 下方：辅助文案
-
-【禁止】
-- 不要生成无关字符或标识
-- 不要生成信息卡片
-- 不要出现“产品名称”“CTA”“占位文本”
-- 不要模板结构
-- 不要只有文字
-
-
-【补充信息】
-- 比例：{ratio_label}（{ratio_size}）
-- 卖点：{highlights_text if highlights_text else '无'}
-- 描述：{description_text if description_text else '无'}
-""".strip()
-
-    if logo_mode == "fixed":
-        # fixed 模式：模型不处理 logo，只预留留白。
-        return (
-            base
-            + f"""
-
-【Logo】
-请在{position}预留空白区域用于放置logo
-不要在该区域生成任何图形或文字
-不要生成任何品牌图标、徽章、占位框
-"""
-        ).strip()
-
-    # ai 模式：允许融合 logo，但严格约束 logo 真实性。
-    return (
-        base
-        + f"""
-
-【Logo】
-已提供品牌logo参考图（{logo_filename or '上传的logo图片'}）
-必须使用提供logo，保持原始形状与比例
-不要重新设计logo，不要生成假logo
-不要生成占位框、边框、替代图标
-logo应自然融入画面，但不得遮挡产品主体
-"""
-    ).strip()
+    style_desc = _resolve_style_desc(style)
+    return _build_dialogue_product_prompt(
+        product_name=product_name,
+        style_desc=style_desc,
+        ratio_label=ratio_label,
+        ratio_size=ratio_size,
+        character_hint=description_text,
+        highlights_text=highlights_text,
+    )
 
 
 def build_poster_prompt(
@@ -115,30 +100,22 @@ def build_poster_prompt(
     style: str,
     description: Optional[str],
     ratio_key: str,
-    logo_mode: str,
-    logo_position: Optional[str],
-    logo_filename: Optional[str] = None,
 ) -> str:
-    """兼容现有调用，内部转发到新 build_prompt。"""
     template = _template_meta(template_key)
     ratio = ASPECT_RATIOS.get(ratio_key, ASPECT_RATIOS["square"])
     highlights_text = _join_highlights(highlights)
     description_text = description.strip() if description else ""
-
-    # 把模板语气融入 style，避免额外模板化字样进入输出。
-    merged_style = f"{style}，{template['tone']}"
-
+    style_desc = _resolve_style_desc(style)
+    merged_style = f"{style_desc}，{template['tone']}"
     return build_prompt(
         product_name=product_name,
         style=merged_style,
-        position=_position_label(logo_position),
-        logo_mode=logo_mode,
         highlights_text=highlights_text,
         description_text=description_text,
         ratio_label=ratio["label"],
         ratio_size=ratio["size"],
-        logo_filename=logo_filename,
     )
+
 
 PRODUCT_SET_TYPES = {
     "main": "主图",
@@ -171,7 +148,7 @@ def build_product_set_prompt(
 
 【产品】
 - 名称：{product_name}
-- 风格：{style}
+- 风格：{_resolve_style_desc(style)}
 - 比例：{ratio['label']}（{ratio['size']}）
 - 卖点：{highlights_text}
 - 描述：{description_text if description_text else '无'}

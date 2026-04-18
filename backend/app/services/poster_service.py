@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import uuid
@@ -12,7 +12,6 @@ from ..prompt_engineering import build_poster_prompt
 from ..schemas import GeneratePosterRequest
 from .image_postprocess import add_logo_to_image
 from .image_provider import ImageProviderService
-from .storage import StorageService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = PROJECT_ROOT / "app" / "data"
@@ -62,12 +61,9 @@ class PosterService:
 
     @staticmethod
     async def generate_poster(req: GeneratePosterRequest, upload_dir: Path) -> dict:
-        logo_filename: Optional[str] = None
         logo_file_path: Optional[Path] = None
-
         if req.logo_id:
             logo_file_path = PosterService._resolve_logo_file(upload_dir, req.logo_id)
-            logo_filename = logo_file_path.name
 
         prompt = build_poster_prompt(
             template_key=req.template_key,
@@ -76,20 +72,7 @@ class PosterService:
             style=req.style,
             description=req.description,
             ratio_key=req.ratio_key,
-            logo_mode=req.logo_mode,
-            logo_position=req.logo_position,
-            logo_filename=logo_filename,
         )
-
-        # fixed 模式：明确禁止把 logo 传给模型，仅生成商品海报。
-        if req.logo_mode == "fixed":
-            logo_base64_data_url = None
-        else:
-            logo_base64_data_url = (
-                StorageService.logo_to_data_url(logo_filename)
-                if logo_filename
-                else None
-            )
 
         image = await ImageProviderService.generate_image(
             api_key=req.api_key,
@@ -97,11 +80,11 @@ class PosterService:
             model=req.model,
             prompt=prompt,
             ratio_key=req.ratio_key,
-            logo_base64_data_url=logo_base64_data_url,
+            logo_base64_data_url=None,
+            reference_images_data_urls=None,
         )
 
-        # fixed 模式：模型只出商品图，后端贴 logo（稳定可控）
-        if req.logo_mode == "fixed" and logo_file_path:
+        if logo_file_path:
             base_poster_path = await PosterService._ensure_local_image_path(image)
             merged_path = add_logo_to_image(
                 image_path=str(base_poster_path),
@@ -113,5 +96,4 @@ class PosterService:
                 "saved_path": f"/static/generated/{Path(merged_path).name}",
             }
 
-        # ai 模式：保持原有模型融合结果
         return {"prompt": prompt, **image}

@@ -48,7 +48,7 @@ async def health() -> dict:
 async def poster_options() -> dict:
     return {
         "templates": TEMPLATES,
-        "styles": STYLES,
+        "styles": [{"key": s["key"], "name": s["name"]} for s in STYLES],
         "aspect_ratios": ASPECT_RATIOS,
     }
 
