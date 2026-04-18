@@ -8,6 +8,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .poster_config import ASPECT_RATIOS, STYLES, TEMPLATES
 from .schemas import (
+    ComicPanelItem,
+    GenerateComicRequest,
+    GenerateComicResponse,
     GeneratePosterRequest,
     GeneratePosterResponse,
     GenerateProductSetRequest,
@@ -15,6 +18,7 @@ from .schemas import (
     UploadLogoResponse,
     UploadProductImageResponse,
 )
+from .services.comic_service import ComicService
 from .services.poster_service import PosterService
 from .services.product_set_service import ProductSetService
 from .services.storage import StorageService
@@ -83,3 +87,13 @@ async def upload_product_image(file: UploadFile = File(...)) -> UploadProductIma
 async def generate_product_set(req: GenerateProductSetRequest) -> GenerateProductSetResponse:
     result = await ProductSetService.generate_product_set(req, UPLOAD_DIR)
     return GenerateProductSetResponse(**result)
+
+
+@app.post("/api/poster/generate-comic", response_model=GenerateComicResponse)
+async def generate_comic(req: GenerateComicRequest) -> GenerateComicResponse:
+    result = await ComicService.generate_comic(req)
+    return GenerateComicResponse(
+        panel_count=result["panel_count"],
+        panels=[ComicPanelItem(**p) for p in result["panels"]],
+        composite_path=result.get("composite_path"),
+    )

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Dict, List
 
@@ -103,7 +103,7 @@ STYLES = [
 STYLE_MAP = {s["key"]: s for s in STYLES}
 
 ASPECT_RATIOS: Dict[str, Dict] = {
-    "square": {"label": "朋友圈", "size": "1024x1024"},
-    "mobile": {"label": "手机竖版", "size": "1024x1792"},
-    "landscape": {"label": "横版海报", "size": "1792x1024"},
+    "square": {"label": "朋友圈", "size": "1024x1024", "ratio": "1:1"},
+    "mobile": {"label": "手机竖版", "size": "1024x1792", "ratio": "9:16"},
+    "landscape": {"label": "横版海报", "size": "1792x1024", "ratio": "16:9"},
 }

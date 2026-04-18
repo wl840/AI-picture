@@ -1,4 +1,4 @@
-﻿const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
 export async function fetchPosterOptions() {
   const res = await fetch(`${API_BASE}/api/poster/options`);
@@ -64,6 +64,20 @@ export async function generateProductSet(payload) {
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`五图生成失败: ${text}`);
+  }
+  return res.json();
+}
+
+export async function generateComic(payload) {
+  const res = await fetch(`${API_BASE}/api/poster/generate-comic`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`漫画生成失败: ${text}`);
   }
   return res.json();
 }

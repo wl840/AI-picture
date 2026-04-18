@@ -85,3 +85,35 @@ class GenerateProductSetResponse(BaseModel):
     product_image_id: str
     success_count: int
     items: List[ProductSetItemResponse]
+
+
+class GenerateComicRequest(BaseModel):
+    api_key: str = Field(..., min_length=10, description="DashScope/OpenAI-compatible API key")
+    model: str = Field(default="qwen-image-2.0-pro")
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    product_name: str = Field(..., min_length=2, max_length=80)
+    style: str = Field(default="american_comic")
+    ratio_key: str = Field(default="square")
+    panel_count: int = Field(default=4, ge=4, le=6)
+    character_description: str = Field(default="")
+
+    @field_validator("base_url")
+    @classmethod
+    def normalize_base_url(cls, value: str) -> str:
+        return value.rstrip("/")
+
+
+class ComicPanelItem(BaseModel):
+    index: int
+    scene: str
+    image_url: Optional[str] = None
+    image_base64: Optional[str] = None
+    saved_path: Optional[str] = None
+    prompt: str
+    error: Optional[str] = None
+
+
+class GenerateComicResponse(BaseModel):
+    panel_count: int
+    panels: List[ComicPanelItem]
+    composite_path: Optional[str] = None

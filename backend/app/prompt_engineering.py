@@ -45,24 +45,27 @@ def _build_dialogue_product_prompt(
 
 【画面主体】
 产品：{product_name}
-{characters}正在使用或展示该产品，形成对话或互动场景
-角色表情生动，肢体语言自然，场景富有叙事感
+{characters}正在使用或展示该产品，形成对话互动场景
+角色之间有清晰的漫画对话气泡（speech bubble），气泡内可以是简短的感叹词或表情符号，体现角色正在交流
+角色表情生动，肢体语言自然
 
 【核心要求】
 1. 产品必须突出，作为画面焦点
-2. 角色与产品的互动自然，体现产品的使用场景
-3. 整体构图完整，具备海报视觉张力
+2. 对话气泡是画面的重要组成部分，风格与整体插画一致
+3. 角色与产品的互动自然，体现产品的使用场景
+4. 整体构图完整，具备海报视觉张力
 
 【风格】
 - {style_desc}
-- 插画海报质感
+- 插画海报质感，对话气泡与画风统一
 
 【布局】
 - 产品置于构图显眼位置，角色围绕产品互动
+- 对话气泡自然分布在角色旁边，不遮挡产品主体
 - 背景与角色风格统一，层次丰富但不喧宾夺主
 
 【禁止】
-- 不要出现无关文字、水印或logo
+- 不要出现品牌名称、水印或无关logo
 - 不要生成写实照片风格
 - 不要模板化空白占位结构
 
@@ -115,6 +118,62 @@ def build_poster_prompt(
         ratio_label=ratio["label"],
         ratio_size=ratio["size"],
     )
+
+
+_PANEL_SCENES = [
+    "角色A偶然发现产品，表情好奇，对话气泡台词：这是什么？",
+    "角色A兴奋地拿起产品展示给角色B，对话气泡台词：快来看这个！",
+    "角色B接过产品仔细端详，对话气泡台词：哇，感觉很不错！",
+    "两个角色一起愉快地使用产品，对话气泡台词：真的很好用！",
+    "角色A指向产品推荐，对话气泡台词：强烈推荐！",
+    "两个角色满意微笑，产品居中展示，对话气泡台词：值得拥有！",
+]
+
+
+def _build_panel_scenes(panel_count: int) -> List[str]:
+    return _PANEL_SCENES[:panel_count]
+
+
+def build_comic_panel_prompt(
+    *,
+    panel_index: int,
+    panel_count: int,
+    product_name: str,
+    scene_description: str,
+    style: str,
+    character_hint: str = "",
+    ratio_label: str = "方形",
+    ratio_size: str = "1024x1024",
+) -> str:
+    style_desc = _resolve_style_desc(style)
+    characters = character_hint if character_hint else "角色（人物或动物均可）"
+    has_reference = panel_index > 1
+    consistency_note = (
+        "【角色一致性】\n必须保持与参考图完全相同的角色外观、服装、体型和配色，严格遵循参考图中角色视觉设定\n\n"
+        if has_reference
+        else ""
+    )
+    return f"""
+动画风格漫画海报，第{panel_index}格（共{panel_count}格）。
+
+{consistency_note}【本格画面】
+产品：{product_name}
+角色：{characters}
+场景：{scene_description}
+角色之间有清晰的漫画对话气泡，气泡内为场景对应的简短台词
+
+【风格】
+- {style_desc}
+- 单格漫画构图，四周留白边距模拟漫画格线
+- 线条干净，角色表情生动
+
+【禁止】
+- 不要出现格线编号或品牌水印
+- 不要生成写实照片风格
+
+【补充信息】
+- 比例：{ratio_label}（{ratio_size}）
+""".strip()
 
 
 PRODUCT_SET_TYPES = {

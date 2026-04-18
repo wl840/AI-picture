@@ -1,6 +1,7 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchPosterOptions,
+  generateComic,
   generatePoster,
   generateProductSet,
   toAbsoluteUrl,
@@ -33,8 +34,11 @@ function App() {
   const [productImageInfo, setProductImageInfo] = useState(null);
   const [result, setResult] = useState(null);
   const [productSetResult, setProductSetResult] = useState(null);
+  const [comicResult, setComicResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [productSetLoading, setProductSetLoading] = useState(false);
+  const [comicLoading, setComicLoading] = useState(false);
+  const [panelCount, setPanelCount] = useState(4);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -203,6 +207,37 @@ function App() {
     }
   };
 
+  const onGenerateComic = async () => {
+    if (!form.apiKey.trim()) {
+      setError("请在 frontend/.env 中配置 VITE_DEFAULT_API_KEY");
+      return;
+    }
+    if (!form.productName.trim()) {
+      setError("请填写产品名称");
+      return;
+    }
+    setComicLoading(true);
+    setError("");
+    try {
+      const payload = {
+        api_key: form.apiKey.trim(),
+        base_url: DEFAULT_IMAGE_BASE_URL,
+        model: DEFAULT_IMAGE_MODEL,
+        product_name: form.productName.trim(),
+        style: form.style,
+        ratio_key: form.ratioKey,
+        panel_count: panelCount,
+        character_description: form.description.trim(),
+      };
+      const generated = await generateComic(payload);
+      setComicResult(generated);
+    } catch (err) {
+      setError(err.message || "漫画生成失败");
+    } finally {
+      setComicLoading(false);
+    }
+  };
+
   const downloadImage = (url, prefix = "poster") => {
     if (!url) return;
     const link = document.createElement("a");
@@ -302,7 +337,7 @@ function App() {
                   onClick={() => updateField("ratioKey", key)}
                 >
                   <strong>{value.label}</strong>
-                  <small>{value.size}</small>
+                  <small>{value.ratio || value.size}</small>
                 </button>
               ))}
             </div>
@@ -342,6 +377,23 @@ function App() {
 
           {error ? <div className="error-box">{error}</div> : null}
 
+          <div className="section">
+            <h2>漫画海报 — 格数选择</h2>
+            <div className="chips">
+              {[4, 5, 6].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`chip ${panelCount === n ? "active" : ""}`}
+                  onClick={() => setPanelCount(n)}
+                >
+                  {n} 格
+                </button>
+              ))}
+            </div>
+            <p className="tip" style={{ marginTop: 6 }}>逐格生成，角色一致性最高，约需 {panelCount} 分钟</p>
+          </div>
+
           <div className="action-grid">
             <button type="button" className="generate-btn" onClick={onGenerate} disabled={loading}>
               {loading ? "海报生成中..." : "AI 生成海报"}
@@ -353,6 +405,14 @@ function App() {
               disabled={productSetLoading}
             >
               {productSetLoading ? "五图生成中..." : "AI 生成商品五图"}
+            </button>
+            <button
+              type="button"
+              className="generate-btn comic"
+              onClick={onGenerateComic}
+              disabled={comicLoading}
+            >
+              {comicLoading ? `漫画生成中（逐格进行）...` : `AI 生成 ${panelCount} 格漫画海报`}
             </button>
           </div>
         </section>
@@ -428,7 +488,68 @@ function App() {
               ))}
             </div>
           ) : (
-            <div className="set-empty-state">上传产品参考图后点击“AI 生成商品五图”</div>
+            <div className="set-empty-state">上传产品参考图后点击 AI 生成商品五图</div>
+          )}
+
+          {comicResult && (
+            <>
+              <h2 className="set-title">漫画结果（{comicResult.panel_count} 格）</h2>
+              {comicResult.composite_path && (
+                <div className="comic-composite">
+                  <img
+                    src={toAbsoluteUrl(comicResult.composite_path)}
+                    alt="漫画完整条"
+                    className="poster-image"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => downloadImage(toAbsoluteUrl(comicResult.composite_path), "comic_strip")}
+                  >
+                    下载漫画条
+                  </button>
+                </div>
+              )}
+              <div className="set-grid">
+                {comicResult.panels.map((panel) => {
+                  const imgSrc = panel.saved_path
+                    ? toAbsoluteUrl(panel.saved_path)
+                    : panel.image_url
+                    ? toAbsoluteUrl(panel.image_url)
+                    : panel.image_base64
+                    ? `data:image/png;base64,${panel.image_base64}`
+                    : "";
+                  return (
+                    <div key={panel.index} className="set-card">
+                      <div className="set-card-head">
+                        <strong>第 {panel.index} 格</strong>
+                        <span className={`set-status ${panel.error ? "error" : "ok"}`}>
+                          {panel.error ? "失败" : "完成"}
+                        </span>
+                      </div>
+                      <div className="set-image-box">
+                        {imgSrc ? (
+                          <img src={imgSrc} alt={`第${panel.index}格`} className="set-image" />
+                        ) : (
+                          <div className="set-empty">{panel.error || "等待生成"}</div>
+                        )}
+                      </div>
+                      <small style={{ padding: "4px 8px", color: "#666", display: "block" }}>
+                        {panel.scene}
+                      </small>
+                      <div className="set-actions">
+                        <button
+                          type="button"
+                          onClick={() => downloadImage(imgSrc, `comic_panel_${panel.index}`)}
+                          disabled={!imgSrc}
+                        >
+                          下载
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </aside>
       </main>
