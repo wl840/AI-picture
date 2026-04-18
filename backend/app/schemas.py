@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import List, Literal, Optional
 
@@ -89,18 +89,29 @@ class GenerateProductSetResponse(BaseModel):
 
 class GenerateComicRequest(BaseModel):
     api_key: str = Field(..., min_length=10, description="DashScope/OpenAI-compatible API key")
-    model: str = Field(default="qwen-image-2.0-pro")
+    model: str = Field(default="wan2.7-image")
     base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
     product_name: str = Field(..., min_length=2, max_length=80)
+    product_image_id: Optional[str] = Field(default=None, min_length=8)
     style: str = Field(default="american_comic")
     ratio_key: str = Field(default="square")
     panel_count: int = Field(default=4, ge=4, le=6)
+    product_description: str = Field(default="")
     character_description: str = Field(default="")
+    language: Literal["zh-CN", "en-US"] = Field(default="zh-CN")
+    text_mode: Literal["post_render", "model_text"] = Field(default="post_render")
 
     @field_validator("base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def normalize_descriptions(self) -> "GenerateComicRequest":
+        # Backward compatibility: old frontend uses character_description.
+        if not self.product_description.strip() and self.character_description.strip():
+            self.product_description = self.character_description.strip()
+        return self
 
 
 class ComicPanelItem(BaseModel):
@@ -117,3 +128,30 @@ class GenerateComicResponse(BaseModel):
     panel_count: int
     panels: List[ComicPanelItem]
     composite_path: Optional[str] = None
+
+
+class GenerateComicTaskCreateResponse(BaseModel):
+    task_id: str
+    status: Literal["pending", "running", "completed", "failed"]
+    panel_count: int
+
+
+class ComicTaskPanelItem(BaseModel):
+    index: int
+    status: Literal["pending", "prompt_ready", "done", "failed"] = "pending"
+    scene: str = ""
+    image_url: Optional[str] = None
+    image_base64: Optional[str] = None
+    saved_path: Optional[str] = None
+    prompt: str = ""
+    error: Optional[str] = None
+
+
+class GenerateComicTaskStatusResponse(BaseModel):
+    task_id: str
+    status: Literal["pending", "running", "completed", "failed"]
+    panel_count: int
+    completed_count: int
+    panels: List[ComicTaskPanelItem]
+    composite_path: Optional[str] = None
+    error: Optional[str] = None

@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile
@@ -11,6 +12,8 @@ from .schemas import (
     ComicPanelItem,
     GenerateComicRequest,
     GenerateComicResponse,
+    GenerateComicTaskCreateResponse,
+    GenerateComicTaskStatusResponse,
     GeneratePosterRequest,
     GeneratePosterResponse,
     GenerateProductSetRequest,
@@ -19,6 +22,7 @@ from .schemas import (
     UploadProductImageResponse,
 )
 from .services.comic_service import ComicService
+from .services.comic_task_service import ComicTaskService
 from .services.poster_service import PosterService
 from .services.product_set_service import ProductSetService
 from .services.storage import StorageService
@@ -91,9 +95,26 @@ async def generate_product_set(req: GenerateProductSetRequest) -> GenerateProduc
 
 @app.post("/api/poster/generate-comic", response_model=GenerateComicResponse)
 async def generate_comic(req: GenerateComicRequest) -> GenerateComicResponse:
-    result = await ComicService.generate_comic(req)
+    result = await ComicService.generate_comic(req, UPLOAD_DIR)
     return GenerateComicResponse(
         panel_count=result["panel_count"],
         panels=[ComicPanelItem(**p) for p in result["panels"]],
         composite_path=result.get("composite_path"),
     )
+
+
+@app.post("/api/poster/generate-comic/task", response_model=GenerateComicTaskCreateResponse)
+async def create_comic_task(req: GenerateComicRequest) -> GenerateComicTaskCreateResponse:
+    task = await ComicTaskService.create_task(panel_count=req.panel_count)
+    asyncio.create_task(ComicTaskService.run_task(task["task_id"], req, UPLOAD_DIR))
+    return GenerateComicTaskCreateResponse(
+        task_id=task["task_id"],
+        status=task["status"],
+        panel_count=task["panel_count"],
+    )
+
+
+@app.get("/api/poster/generate-comic/task/{task_id}", response_model=GenerateComicTaskStatusResponse)
+async def get_comic_task(task_id: str) -> GenerateComicTaskStatusResponse:
+    task = await ComicTaskService.get_task(task_id)
+    return GenerateComicTaskStatusResponse(**task)

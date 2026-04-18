@@ -82,6 +82,29 @@ export async function generateComic(payload) {
   return res.json();
 }
 
+export async function createComicTask(payload) {
+  const res = await fetch(`${API_BASE}/api/poster/generate-comic/task`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`漫画任务创建失败: ${text}`);
+  }
+  return res.json();
+}
+
+export async function fetchComicTaskStatus(taskId) {
+  const res = await fetch(`${API_BASE}/api/poster/generate-comic/task/${taskId}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`漫画任务查询失败: ${text}`);
+  }
+  return res.json();
+}
+
 export function toAbsoluteUrl(url) {
   if (!url) return "";
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {

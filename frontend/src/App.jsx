@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  createComicTask,
+  fetchComicTaskStatus,
   fetchPosterOptions,
-  generateComic,
   generatePoster,
   generateProductSet,
   toAbsoluteUrl,
@@ -10,6 +11,7 @@ import {
 } from "./api";
 
 const DEFAULT_IMAGE_MODEL = "qwen-image-2.0-pro";
+const DEFAULT_COMIC_MODEL = "wan2.7-image";
 const DEFAULT_IMAGE_BASE_URL =
   import.meta.env.VITE_IMAGE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
@@ -101,6 +103,8 @@ function App() {
       .split(/[，,;；\n]/)
       .map((item) => item.trim())
       .filter(Boolean);
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const onUploadLogo = async (event) => {
     const file = event.target.files?.[0];
@@ -222,15 +226,53 @@ function App() {
       const payload = {
         api_key: form.apiKey.trim(),
         base_url: DEFAULT_IMAGE_BASE_URL,
-        model: DEFAULT_IMAGE_MODEL,
+        model: DEFAULT_COMIC_MODEL,
         product_name: form.productName.trim(),
+        product_image_id: productImageInfo?.product_image_id || null,
         style: form.style,
         ratio_key: form.ratioKey,
         panel_count: panelCount,
+        product_description: form.description.trim(),
         character_description: form.description.trim(),
+        language: "zh-CN",
+        text_mode: "post_render",
       };
-      const generated = await generateComic(payload);
-      setComicResult(generated);
+      setComicResult({
+        task_id: "",
+        status: "pending",
+        panel_count: panelCount,
+        completed_count: 0,
+        panels: Array.from({ length: panelCount }, (_, i) => ({
+          index: i + 1,
+          status: "pending",
+          scene: "",
+          prompt: "",
+          saved_path: null,
+          image_url: null,
+          image_base64: null,
+          error: null,
+        })),
+        composite_path: null,
+        error: null,
+      });
+
+      const task = await createComicTask(payload);
+      let keepPolling = true;
+      while (keepPolling) {
+        const latest = await fetchComicTaskStatus(task.task_id);
+        setComicResult(latest);
+
+        if (latest.status === "completed") {
+          keepPolling = false;
+          break;
+        }
+        if (latest.status === "failed") {
+          setError(latest.error || "漫画生成失败");
+          keepPolling = false;
+          break;
+        }
+        await sleep(1000);
+      }
     } catch (err) {
       setError(err.message || "漫画生成失败");
     } finally {
@@ -445,7 +487,7 @@ function App() {
           </details>
 
           <div className="tip">
-            当前模板：{templateMap.get(form.templateKey)?.name || "-"} | 模型：{DEFAULT_IMAGE_MODEL}
+            当前模板：{templateMap.get(form.templateKey)?.name || "-"} | 海报模型：{DEFAULT_IMAGE_MODEL} | 漫画模型：{DEFAULT_COMIC_MODEL}
           </div>
 
           <h2 className="set-title">五图结果（{productSetResult?.success_count || 0}/5）</h2>
@@ -493,7 +535,12 @@ function App() {
 
           {comicResult && (
             <>
-              <h2 className="set-title">漫画结果（{comicResult.panel_count} 格）</h2>
+              <h2 className="set-title">
+                漫画结果（{comicResult.completed_count || 0}/{comicResult.panel_count} 格）
+              </h2>
+              <small style={{ color: "#666", display: "block", marginBottom: 8 }}>
+                任务状态：{comicResult.status || "running"}
+              </small>
               {comicResult.composite_path && (
                 <div className="comic-composite">
                   <img
@@ -518,12 +565,23 @@ function App() {
                     : panel.image_base64
                     ? `data:image/png;base64,${panel.image_base64}`
                     : "";
+                  const panelStatus = panel.status || (panel.error ? "failed" : imgSrc ? "done" : "pending");
+                  const panelStatusText =
+                    panelStatus === "failed"
+                      ? "失败"
+                      : panelStatus === "done"
+                      ? "完成"
+                      : panelStatus === "prompt_ready"
+                      ? "生图中"
+                      : "排队中";
+                  const panelStatusClass =
+                    panelStatus === "failed" ? "error" : panelStatus === "done" ? "ok" : "";
                   return (
                     <div key={panel.index} className="set-card">
                       <div className="set-card-head">
                         <strong>第 {panel.index} 格</strong>
-                        <span className={`set-status ${panel.error ? "error" : "ok"}`}>
-                          {panel.error ? "失败" : "完成"}
+                        <span className={`set-status ${panelStatusClass}`}>
+                          {panelStatusText}
                         </span>
                       </div>
                       <div className="set-image-box">
@@ -534,8 +592,12 @@ function App() {
                         )}
                       </div>
                       <small style={{ padding: "4px 8px", color: "#666", display: "block" }}>
-                        {panel.scene}
+                        {panel.scene || "提示词生成中..."}
                       </small>
+                      <details className="prompt-box mini">
+                        <summary>查看提示词</summary>
+                        <pre>{panel.prompt || "提示词生成中..."}</pre>
+                      </details>
                       <div className="set-actions">
                         <button
                           type="button"

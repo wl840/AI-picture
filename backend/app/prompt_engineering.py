@@ -23,7 +23,8 @@ def _position_label(position: Optional[str]) -> str:
 
 
 def _join_highlights(highlights: List[str]) -> str:
-    return "；".join([h.strip() for h in highlights if h.strip()]) or "突出核心卖点"
+    normalized = [h.strip() for h in highlights if h.strip()]
+    return "、".join(normalized) if normalized else "突出核心卖点"
 
 
 def _resolve_style_desc(style_key: str) -> str:
@@ -39,39 +40,26 @@ def _build_dialogue_product_prompt(
     character_hint: str,
     highlights_text: str,
 ) -> str:
-    characters = character_hint if character_hint else "两个或更多角色（人物或动物均可）"
+    characters = character_hint if character_hint else "两位有表现力的角色"
     return f"""
-设计一张动画风格产品宣传海报。
+请设计一张中文动画风格产品宣传海报。
 
-【画面主体】
-产品：{product_name}
-{characters}正在使用或展示该产品，形成对话互动场景
-角色之间有清晰的漫画对话气泡（speech bubble），气泡内可以是简短的感叹词或表情符号，体现角色正在交流
-角色表情生动，肢体语言自然
+【产品】{product_name}
+【角色】{characters}
+【卖点】{highlights_text}
 
-【核心要求】
-1. 产品必须突出，作为画面焦点
-2. 对话气泡是画面的重要组成部分，风格与整体插画一致
-3. 角色与产品的互动自然，体现产品的使用场景
-4. 整体构图完整，具备海报视觉张力
+【要求】
+1. 产品必须是画面焦点。
+2. 角色与产品有自然互动。
+3. 可包含简短中文对话气泡。
+4. 构图完整、适合营销海报。
 
 【风格】
 - {style_desc}
-- 插画海报质感，对话气泡与画风统一
+- 插画质感，非写实照片
 
-【布局】
-- 产品置于构图显眼位置，角色围绕产品互动
-- 对话气泡自然分布在角色旁边，不遮挡产品主体
-- 背景与角色风格统一，层次丰富但不喧宾夺主
-
-【禁止】
-- 不要出现品牌名称、水印或无关logo
-- 不要生成写实照片风格
-- 不要模板化空白占位结构
-
-【补充信息】
-- 比例：{ratio_label}（{ratio_size}）
-- 产品卖点：{highlights_text if highlights_text else "无"}
+【比例】{ratio_label}（{ratio_size}）
+【禁止】水印、乱码、无关 logo。
 """.strip()
 
 
@@ -109,7 +97,7 @@ def build_poster_prompt(
     highlights_text = _join_highlights(highlights)
     description_text = description.strip() if description else ""
     style_desc = _resolve_style_desc(style)
-    merged_style = f"{style_desc}，{template['tone']}"
+    merged_style = f"{style_desc}，整体基调：{template['tone']}"
     return build_prompt(
         product_name=product_name,
         style=merged_style,
@@ -121,17 +109,93 @@ def build_poster_prompt(
 
 
 _PANEL_SCENES = [
-    "角色A偶然发现产品，表情好奇，对话气泡台词：这是什么？",
-    "角色A兴奋地拿起产品展示给角色B，对话气泡台词：快来看这个！",
-    "角色B接过产品仔细端详，对话气泡台词：哇，感觉很不错！",
-    "两个角色一起愉快地使用产品，对话气泡台词：真的很好用！",
-    "角色A指向产品推荐，对话气泡台词：强烈推荐！",
-    "两个角色满意微笑，产品居中展示，对话气泡台词：值得拥有！",
+    "角色发现痛点并注意到产品",
+    "角色拿起产品并观察细节",
+    "角色开始实际使用产品",
+    "展示使用后的明显效果",
+    "角色向他人推荐产品",
+    "结尾定格，产品与角色同框",
 ]
 
 
 def _build_panel_scenes(panel_count: int) -> List[str]:
     return _PANEL_SCENES[:panel_count]
+
+
+def _infer_usage_context(product_name: str, product_description: str) -> str:
+    text = f"{product_name} {product_description}".lower()
+    mapping = [
+        (("kitchen", "coffee", "cook", "厨", "餐", "咖啡"), "厨房或餐饮场景"),
+        (("desk", "office", "办公", "学习", "书桌"), "办公或学习桌面场景"),
+        (("outdoor", "travel", "camp", "户外", "旅行"), "户外活动场景"),
+        (("beauty", "skincare", "cosmetic", "护肤", "美妆"), "梳妆台或浴室场景"),
+        (("fitness", "sport", "gym", "健身", "运动"), "健身训练场景"),
+    ]
+    for keys, context in mapping:
+        if any(key in text for key in keys):
+            return context
+    return "自然的日常使用场景"
+
+
+def build_comic_storyboard(
+    *,
+    panel_count: int,
+    product_name: str,
+    product_description: str = "",
+) -> List[dict]:
+    context = _infer_usage_context(product_name=product_name, product_description=product_description)
+    desc = product_description.strip() or f"{product_name} 的日常使用"
+    beats = [
+        {
+            "scene": "需求出现",
+            "camera": "大全景建立镜头",
+            "action": f"角色在 {context} 中遇到痛点，注意力被产品吸引。",
+            "emotion": "好奇",
+            "dialogue": "这个问题终于有办法解决了吗？",
+            "continuity_note": "建立环境、角色服装与关键道具。",
+        },
+        {
+            "scene": "产品出场",
+            "camera": "中景，产品前置",
+            "action": f"角色拿起 {product_name}，观察外观和关键细节。",
+            "emotion": "惊喜",
+            "dialogue": "看起来很靠谱。",
+            "continuity_note": "保持角色外观和产品形态一致。",
+        },
+        {
+            "scene": "开始上手",
+            "camera": "中近景",
+            "action": f"角色开始在 {desc} 场景里实际使用 {product_name}。",
+            "emotion": "专注",
+            "dialogue": "上手很顺，操作很自然。",
+            "continuity_note": "保持与上一格的空间连续关系。",
+        },
+        {
+            "scene": "效果强化",
+            "camera": "动态斜角镜头",
+            "action": "通过前后对比，展示使用后的明显效果提升。",
+            "emotion": "兴奋",
+            "dialogue": "效果很明显，效率提升了。",
+            "continuity_note": "动作与镜头变化要明显，但人物和产品一致。",
+        },
+        {
+            "scene": "主动推荐",
+            "camera": "双人中景",
+            "action": f"主角色向同伴演示并推荐 {product_name}。",
+            "emotion": "自信",
+            "dialogue": "你也试试这个，真的好用。",
+            "continuity_note": "新增角色时，主角色和产品仍是视觉中心。",
+        },
+        {
+            "scene": "结尾定格",
+            "camera": "收束特写镜头",
+            "action": "角色与产品同框定格，形成海报级结尾画面。",
+            "emotion": "满足",
+            "dialogue": "这就是我会持续使用的选择。",
+            "continuity_note": "作为结尾格，构图稳定，画面完成度高。",
+        },
+    ]
+    return [dict(beats[i], index=i + 1) for i in range(panel_count)]
 
 
 def build_comic_panel_prompt(
@@ -142,37 +206,61 @@ def build_comic_panel_prompt(
     scene_description: str,
     style: str,
     character_hint: str = "",
+    camera: str = "",
+    action: str = "",
+    emotion: str = "",
+    dialogue: str = "",
+    continuity_note: str = "",
+    product_description: str = "",
+    language: str = "zh-CN",
+    text_mode: str = "post_render",
     ratio_label: str = "方形",
     ratio_size: str = "1024x1024",
 ) -> str:
     style_desc = _resolve_style_desc(style)
-    characters = character_hint if character_hint else "角色（人物或动物均可）"
-    has_reference = panel_index > 1
-    consistency_note = (
-        "【角色一致性】\n必须保持与参考图完全相同的角色外观、服装、体型和配色，严格遵循参考图中角色视觉设定\n\n"
-        if has_reference
-        else ""
-    )
+    characters = character_hint.strip() if character_hint.strip() else "1-2位角色（人物或拟人均可）"
+    product_desc_text = product_description.strip() if product_description.strip() else "未提供补充描述"
+    camera_text = camera.strip() if camera.strip() else "中景"
+    action_text = action.strip() if action.strip() else scene_description
+    emotion_text = emotion.strip() if emotion.strip() else "积极自然"
+    dialogue_text = dialogue.strip() if dialogue.strip() else "简短口语对白"
+    continuity_text = continuity_note.strip() if continuity_note.strip() else "保持角色与产品一致性"
+
+    language_text = "简体中文" if language == "zh-CN" else "English"
+    if text_mode == "post_render":
+        dialogue_rule = "画面中不要渲染任何可读文字，只保留空白对话气泡区域。"
+    else:
+        dialogue_rule = (
+            "对话气泡文字必须为简体中文，禁止出现英文。"
+            if language == "zh-CN"
+            else "All speech bubble text must be in English."
+        )
+
     return f"""
-动画风格漫画海报，第{panel_index}格（共{panel_count}格）。
+漫画分镜第 {panel_index}/{panel_count} 格。
 
-{consistency_note}【本格画面】
-产品：{product_name}
-角色：{characters}
-场景：{scene_description}
-角色之间有清晰的漫画对话气泡，气泡内为场景对应的简短台词
+【语言】{language_text}
+【产品】{product_name}
+【产品描述】{product_desc_text}
+【角色设定】{characters}
+【本格目标】{scene_description}
+【镜头】{camera_text}
+【动作】{action_text}
+【情绪】{emotion_text}
+【对白】{dialogue_text}
+【连续性说明】{continuity_text}
+【文字策略】{dialogue_rule}
 
-【风格】
-- {style_desc}
-- 单格漫画构图，四周留白边距模拟漫画格线
-- 线条干净，角色表情生动
+【画风】{style_desc}
+- 单格漫画构图，线条清晰
+- 保持同一世界观和角色一致性
+- 本格必须与上一格形成明显推进，不可重复同姿势同机位
 
-【禁止】
-- 不要出现格线编号或品牌水印
-- 不要生成写实照片风格
+【硬性限制】
+- 禁止水印、乱码、无关 logo
+- 禁止写实摄影风格
 
-【补充信息】
-- 比例：{ratio_label}（{ratio_size}）
+【比例】{ratio_label}（{ratio_size}）
 """.strip()
 
 
@@ -180,8 +268,8 @@ PRODUCT_SET_TYPES = {
     "main": "主图",
     "detail": "细节特写",
     "selling_point": "卖点图",
-    "scene": "产品应用场景图",
-    "spec": "尺寸规格图",
+    "scene": "应用场景图",
+    "spec": "规格信息图",
 }
 
 
@@ -198,64 +286,60 @@ def build_product_set_prompt(
 ) -> str:
     ratio = ASPECT_RATIOS.get(ratio_key, ASPECT_RATIOS["square"])
     highlights_text = _join_highlights(highlights)
-    description_text = description.strip() if description else ""
-    scene_text = scene_description.strip() if scene_description else ""
-    specs_text = "；".join([s.strip() for s in specs if s.strip()]) or "未提供"
+    description_text = description.strip() if description else "未提供"
+    scene_text = scene_description.strip() if scene_description else "家居/办公/户外等自然场景"
+    specs_text = "、".join([s.strip() for s in specs if s.strip()]) or "未提供"
 
     common = f"""
-你是资深电商视觉设计师。将参考图中的产品作为唯一主体，保持产品外观一致（形状、颜色、材质、结构）。
+你是资深电商视觉设计师。
+将参考图中的产品作为唯一主体，保持外观一致（形状、颜色、材质、结构）。
 
-【产品】
-- 名称：{product_name}
-- 风格：{_resolve_style_desc(style)}
-- 比例：{ratio['label']}（{ratio['size']}）
-- 卖点：{highlights_text}
-- 描述：{description_text if description_text else '无'}
+【产品】{product_name}
+【风格】{_resolve_style_desc(style)}
+【比例】{ratio['label']}（{ratio['size']}）
+【卖点】{highlights_text}
+【描述】{description_text}
 
-【严格要求】
-1. 不得替换产品，不得改变产品核心结构
-2. 产品主体必须清晰可见，构图专业
-3. 不要出现水印、乱码、品牌logo、二维码
-4. 除尺寸规格图外，尽量不出现大段文字
+【规则】
+1. 不得替换产品，不得改变核心结构。
+2. 产品主体必须清晰可见。
+3. 不要出现水印、二维码、乱码、无关 logo。
 """.strip()
 
     if image_type == "main":
         extra = """
-【画面类型】主图
+【类型】主图
 - 纯净背景或浅色渐变背景
-- 产品完整展示，居中或黄金分割构图
-- 商业广告级打光，强调质感
+- 产品完整展示，构图明确
+- 商业打光，强调质感
 """.strip()
     elif image_type == "detail":
         extra = """
-【画面类型】细节特写
-- 近距离微距视角，放大材质与做工细节
-- 可使用浅景深，突出纹理与结构
+【类型】细节特写
+- 近距离视角，突出材质和做工
 - 保留产品辨识度，避免抽象化
 """.strip()
     elif image_type == "selling_point":
         extra = """
-【画面类型】卖点图
-- 用构图和视觉元素表现卖点，不依赖长文字
-- 画面预留少量留白，便于后期补充文案
-- 重点突出性能、材质或功能亮点
+【类型】卖点图
+- 用视觉元素表现核心卖点
+- 保留少量留白，便于后续文案叠加
 """.strip()
     elif image_type == "scene":
         extra = f"""
-【画面类型】产品应用场景图
-- 产品置于真实使用场景中，主体仍然突出
-- 场景补充：{scene_text if scene_text else '家居/办公/户外等自然使用环境'}
-- 场景元素为陪衬，避免喧宾夺主
+【类型】应用场景图
+- 将产品置于真实使用环境
+- 场景补充：{scene_text}
+- 产品仍为画面焦点
 """.strip()
     elif image_type == "spec":
         extra = f"""
-【画面类型】尺寸规格图
-- 生成简洁信息图风格画面
-- 展示产品整体及尺寸标注线
-- 尺寸信息：{specs_text}
-- 数据标注清晰、排版整齐
+【类型】规格信息图
+- 展示产品整体及关键尺寸信息
+- 规格信息：{specs_text}
+- 信息层级清楚、排版整齐
 """.strip()
     else:
-        extra = "【画面类型】通用产品图"
+        extra = "【类型】通用产品图"
 
     return f"{common}\n\n{extra}".strip()

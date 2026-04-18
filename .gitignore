@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *.pyd
@@ -28,3 +28,5 @@ frontend/.npm-cache/
 *.log
 
 frontend/.vite/
+
+backend/app/data/
