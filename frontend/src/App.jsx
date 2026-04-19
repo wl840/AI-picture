@@ -235,7 +235,7 @@ function App() {
         product_description: form.description.trim(),
         character_description: form.description.trim(),
         language: "zh-CN",
-        text_mode: "post_render",
+        text_mode: "model_text",
       };
       setComicResult({
         task_id: "",
@@ -422,7 +422,7 @@ function App() {
           <div className="section">
             <h2>漫画海报 — 格数选择</h2>
             <div className="chips">
-              {[4, 5, 6].map((n) => (
+              {[4, 6].map((n) => (
                 <button
                   key={n}
                   type="button"
@@ -535,28 +535,11 @@ function App() {
 
           {comicResult && (
             <>
-              <h2 className="set-title">
-                漫画结果（{comicResult.completed_count || 0}/{comicResult.panel_count} 格）
-              </h2>
+              <h2 className="set-title">漫画结果（{comicResult.panel_count} 格）</h2>
               <small style={{ color: "#666", display: "block", marginBottom: 8 }}>
-                任务状态：{comicResult.status || "running"}
+                任务状态：{comicResult.status || "running"}（{comicResult.completed_count || 0}/{comicResult.panel_count}）
               </small>
-              {comicResult.composite_path && (
-                <div className="comic-composite">
-                  <img
-                    src={toAbsoluteUrl(comicResult.composite_path)}
-                    alt="漫画完整条"
-                    className="poster-image"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => downloadImage(toAbsoluteUrl(comicResult.composite_path), "comic_strip")}
-                  >
-                    下载漫画条
-                  </button>
-                </div>
-              )}
-              <div className="set-grid">
+              <div className="set-grid" style={{ marginBottom: 16 }}>
                 {comicResult.panels.map((panel) => {
                   const imgSrc = panel.saved_path
                     ? toAbsoluteUrl(panel.saved_path)
@@ -576,13 +559,12 @@ function App() {
                       : "排队中";
                   const panelStatusClass =
                     panelStatus === "failed" ? "error" : panelStatus === "done" ? "ok" : "";
+
                   return (
                     <div key={panel.index} className="set-card">
                       <div className="set-card-head">
                         <strong>第 {panel.index} 格</strong>
-                        <span className={`set-status ${panelStatusClass}`}>
-                          {panelStatusText}
-                        </span>
+                        <span className={`set-status ${panelStatusClass}`}>{panelStatusText}</span>
                       </div>
                       <div className="set-image-box">
                         {imgSrc ? (
@@ -591,26 +573,29 @@ function App() {
                           <div className="set-empty">{panel.error || "等待生成"}</div>
                         )}
                       </div>
-                      <small style={{ padding: "4px 8px", color: "#666", display: "block" }}>
-                        {panel.scene || "提示词生成中..."}
-                      </small>
                       <details className="prompt-box mini">
                         <summary>查看提示词</summary>
                         <pre>{panel.prompt || "提示词生成中..."}</pre>
                       </details>
-                      <div className="set-actions">
-                        <button
-                          type="button"
-                          onClick={() => downloadImage(imgSrc, `comic_panel_${panel.index}`)}
-                          disabled={!imgSrc}
-                        >
-                          下载
-                        </button>
-                      </div>
                     </div>
                   );
                 })}
               </div>
+              {comicResult.composite_path && (
+                <div className="comic-composite">
+                  <img
+                    src={toAbsoluteUrl(comicResult.composite_path)}
+                    alt="漫画完整条"
+                    className="poster-image"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => downloadImage(toAbsoluteUrl(comicResult.composite_path), "comic_strip")}
+                  >
+                    下载漫画条
+                  </button>
+                </div>
+              )}
             </>
           )}
         </aside>

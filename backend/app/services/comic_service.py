@@ -8,7 +8,7 @@ from typing import Awaitable, Callable, Optional
 
 import httpx
 from fastapi import HTTPException
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from ..poster_config import ASPECT_RATIOS
 from ..prompt_engineering import build_comic_panel_prompt, build_comic_storyboard
@@ -68,76 +68,6 @@ def _resolve_product_reference_data_url(upload_dir: Path, product_image_id: Opti
     return data_url
 
 
-def _pick_cjk_font(font_size: int) -> ImageFont.ImageFont:
-    candidates = [
-        Path("C:/Windows/Fonts/msyh.ttc"),
-        Path("C:/Windows/Fonts/msyhbd.ttc"),
-        Path("C:/Windows/Fonts/simhei.ttf"),
-        Path("C:/Windows/Fonts/simsun.ttc"),
-    ]
-    for path in candidates:
-        if path.exists():
-            try:
-                return ImageFont.truetype(str(path), font_size)
-            except OSError:
-                continue
-    return ImageFont.load_default()
-
-
-def _char_units(ch: str) -> int:
-    # ASCII counts as 1, CJK counts as 2 for rough wrap control.
-    return 1 if ord(ch) < 128 else 2
-
-
-def _wrap_text_for_width(text: str, max_units: int) -> list[str]:
-    lines: list[str] = []
-    current = ""
-    units = 0
-    for ch in text:
-        if ch == "\n":
-            lines.append(current.strip())
-            current = ""
-            units = 0
-            continue
-        ch_units = _char_units(ch)
-        if units + ch_units > max_units and current:
-            lines.append(current.strip())
-            current = ch
-            units = ch_units
-        else:
-            current += ch
-            units += ch_units
-    if current.strip():
-        lines.append(current.strip())
-    return lines
-
-
-def _append_panel_caption(raw_panel_path: Path, panel_index: int, dialogue: str) -> Path:
-    image = Image.open(raw_panel_path).convert("RGB")
-    width, height = image.size
-    caption_height = max(84, int(height * 0.16))
-    canvas = Image.new("RGB", (width, height + caption_height), color=(255, 255, 255))
-    canvas.paste(image, (0, 0))
-
-    draw = ImageDraw.Draw(canvas)
-    draw.line([(0, height), (width, height)], fill=(220, 220, 220), width=2)
-
-    font_size = max(18, int(caption_height * 0.34))
-    font = _pick_cjk_font(font_size=font_size)
-    text = f"第{panel_index}格：{dialogue.strip() if dialogue.strip() else '（无对白）'}"
-    lines = _wrap_text_for_width(text, max_units=36)[:2]
-
-    y = height + 10
-    for line in lines:
-        draw.text((14, y), line, fill=(35, 35, 35), font=font)
-        y += font_size + 4
-
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    out = GENERATED_DIR / f"comic_panel_caption_{uuid.uuid4().hex}.png"
-    canvas.save(out, format="PNG", optimize=True)
-    return out
-
-
 def _dialogue_rule(language: str, text_mode: str) -> str:
     if text_mode == "post_render":
         return "画面中不要渲染任何可读文字，只保留空白对话气泡区域。"
@@ -190,29 +120,20 @@ def compose_comic_strip(panel_paths: list[Path], panel_count: int) -> str:
     panels = [Image.open(p).convert("RGB") for p in panel_paths]
     pw, ph = panels[0].size
 
-    gutter = 20
-    border = 30
-
     if panel_count == 4:
         cols, rows = 2, 2
-    elif panel_count == 5:
-        cols, rows = 2, 3
     else:  # 6
-        cols, rows = 2, 3
+        cols, rows = 3, 2
 
-    total_w = cols * pw + (cols + 1) * gutter + 2 * border
-    total_h = rows * ph + (rows + 1) * gutter + 2 * border
-
+    total_w = cols * pw
+    total_h = rows * ph
     composite = Image.new("RGB", (total_w, total_h), color=(255, 255, 255))
 
     for i, panel in enumerate(panels):
         row = i // cols
         col = i % cols
-        if panel_count == 5 and i == 4:
-            x = (total_w - pw) // 2
-        else:
-            x = border + col * (pw + gutter) + gutter
-        y = border + row * (ph + gutter) + gutter
+        x = col * pw
+        y = row * ph
         composite.paste(panel, (x, y))
 
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
@@ -332,13 +253,6 @@ class ComicService:
                 last_panel_data_url = _path_to_data_url(raw_local_path)
 
                 display_path = raw_local_path
-                if text_mode == "post_render" and language == "zh-CN":
-                    display_path = _append_panel_caption(
-                        raw_panel_path=raw_local_path,
-                        panel_index=panel_index,
-                        dialogue=dialogue,
-                    )
-
                 local_paths.append(display_path)
 
                 panel_result = {
@@ -361,7 +275,7 @@ class ComicService:
                 await _emit_progress(progress_hook, {"type": "panel_error", "panel": panel_result})
 
         composite_path: Optional[str] = None
-        if local_paths:
+        if len(local_paths) == req.panel_count:
             composite_path = compose_comic_strip(local_paths, req.panel_count)
 
         return {

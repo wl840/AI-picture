@@ -95,11 +95,11 @@ class GenerateComicRequest(BaseModel):
     product_image_id: Optional[str] = Field(default=None, min_length=8)
     style: str = Field(default="american_comic")
     ratio_key: str = Field(default="square")
-    panel_count: int = Field(default=4, ge=4, le=6)
+    panel_count: Literal[4, 6] = Field(default=4)
     product_description: str = Field(default="")
     character_description: str = Field(default="")
     language: Literal["zh-CN", "en-US"] = Field(default="zh-CN")
-    text_mode: Literal["post_render", "model_text"] = Field(default="post_render")
+    text_mode: Literal["post_render", "model_text"] = Field(default="model_text")
 
     @field_validator("base_url")
     @classmethod
