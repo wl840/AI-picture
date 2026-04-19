@@ -18,6 +18,45 @@ body {
     linear-gradient(120deg, #eff5ff 0%, #f9fbff 100%);
 }
 
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.8);
+  border-bottom: 1px solid rgba(18, 33, 58, 0.08);
+}
+
+.top-nav-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.top-nav-links {
+  display: flex;
+  gap: 10px;
+}
+
+.top-nav-links a {
+  text-decoration: none;
+  color: #2d3b52;
+  border: 1px solid #d4deef;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #fff;
+  font-size: 14px;
+}
+
+.top-nav-links a.active {
+  background: linear-gradient(135deg, #1f70dd, #22a1f4);
+  border-color: transparent;
+  color: #fff;
+}
+
 .page-wrap {
   position: relative;
   padding: 24px;
@@ -55,6 +94,10 @@ body {
   margin: 0 auto;
 }
 
+.postprocess-board {
+  grid-template-columns: minmax(700px, 1fr) minmax(360px, 460px);
+}
+
 .panel {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.84);
@@ -72,6 +115,30 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.postprocess-preview {
+  max-height: calc(100vh - 96px);
+  overflow: hidden;
+}
+
+.postprocess-list {
+  overflow-y: auto;
+  max-height: calc(100vh - 210px);
+  padding-right: 4px;
+}
+
+.postprocess-list .set-image-box {
+  min-height: 180px;
+  max-height: 220px;
+}
+
+.postprocess-list .set-card-head strong {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
 }
 
 h1,
@@ -120,6 +187,12 @@ select {
   color: #12213a;
   background: #fff;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
 }
 
 input:focus,
@@ -350,6 +423,12 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .postprocess-preview,
+  .postprocess-list {
+    max-height: none;
+    overflow: visible;
+  }
+
   .preview-box,
   .empty-box {
     min-height: 360px;
@@ -375,6 +454,13 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.postprocess-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .generate-btn.secondary {
@@ -488,6 +574,10 @@ textarea {
 
 @media (max-width: 780px) {
   .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .postprocess-actions {
     grid-template-columns: 1fr;
   }
 }

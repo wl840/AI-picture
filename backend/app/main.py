@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .poster_config import ASPECT_RATIOS, STYLES, TEMPLATES
 from .schemas import (
     ComicPanelItem,
+    GeneratedImageItemResponse,
     GenerateComicRequest,
     GenerateComicResponse,
     GenerateComicTaskCreateResponse,
@@ -18,11 +19,14 @@ from .schemas import (
     GeneratePosterResponse,
     GenerateProductSetRequest,
     GenerateProductSetResponse,
+    PostprocessImageRequest,
+    PostprocessImageResponse,
     UploadLogoResponse,
     UploadProductImageResponse,
 )
 from .services.comic_service import ComicService
 from .services.comic_task_service import ComicTaskService
+from .services.postprocess_service import PostprocessService
 from .services.poster_service import PosterService
 from .services.product_set_service import ProductSetService
 from .services.storage import StorageService
@@ -75,6 +79,18 @@ async def upload_logo(file: UploadFile = File(...)) -> UploadLogoResponse:
 async def generate_poster(req: GeneratePosterRequest) -> GeneratePosterResponse:
     result = await PosterService.generate_poster(req, UPLOAD_DIR)
     return GeneratePosterResponse(**result)
+
+
+@app.post("/api/poster/postprocess", response_model=PostprocessImageResponse)
+async def postprocess_images(req: PostprocessImageRequest) -> PostprocessImageResponse:
+    result = await PostprocessService.postprocess_images(req, UPLOAD_DIR)
+    return PostprocessImageResponse(**result)
+
+
+@app.get("/api/poster/generated-images", response_model=list[GeneratedImageItemResponse])
+async def list_generated_images() -> list[GeneratedImageItemResponse]:
+    items = PostprocessService.list_generated_images()
+    return [GeneratedImageItemResponse(**item) for item in items]
 
 
 @app.post("/api/product/upload-image", response_model=UploadProductImageResponse)

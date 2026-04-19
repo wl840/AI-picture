@@ -1,4 +1,4 @@
-﻿# AI Picture
+# AI Picture
 
 一个前后端分离的 AI 海报生成项目：
 - 前端（React + Vite）负责参数配置、Logo 上传、结果预览与下载

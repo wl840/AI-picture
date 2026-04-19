@@ -68,6 +68,29 @@ export async function generateProductSet(payload) {
   return res.json();
 }
 
+export async function postprocessImages(payload) {
+  const res = await fetch(`${API_BASE}/api/poster/postprocess`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`后处理失败: ${text}`);
+  }
+  return res.json();
+}
+
+export async function fetchGeneratedImages() {
+  const res = await fetch(`${API_BASE}/api/poster/generated-images`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`加载已生成图片失败: ${text}`);
+  }
+  return res.json();
+}
+
 export async function generateComic(payload) {
   const res = await fetch(`${API_BASE}/api/poster/generate-comic`, {
     method: "POST",
