@@ -151,7 +151,7 @@ def build_comic_storyboard(
             "camera": "大全景建立镜头",
             "action": f"角色在 {context} 中遇到痛点，注意力被产品吸引。",
             "emotion": "好奇",
-            "dialogue": "这个问题终于有办法解决了吗？",
+            "dialogue_hint": "由模型根据本格剧情与情绪自由构思对白，避免固定模板句。",
             "continuity_note": "建立环境、角色服装与关键道具。",
         },
         {
@@ -159,7 +159,7 @@ def build_comic_storyboard(
             "camera": "中景，产品前置",
             "action": f"角色拿起 {product_name}，观察外观和关键细节。",
             "emotion": "惊喜",
-            "dialogue": "看起来很靠谱。",
+            "dialogue_hint": "由模型根据本格剧情与情绪自由构思对白，避免固定模板句。",
             "continuity_note": "保持角色外观和产品形态一致。",
         },
         {
@@ -167,7 +167,7 @@ def build_comic_storyboard(
             "camera": "中近景",
             "action": f"角色开始在 {desc} 场景里实际使用 {product_name}。",
             "emotion": "专注",
-            "dialogue": "上手很顺，操作很自然。",
+            "dialogue_hint": "由模型根据本格剧情与情绪自由构思对白，避免固定模板句。",
             "continuity_note": "保持与上一格的空间连续关系。",
         },
         {
@@ -175,7 +175,7 @@ def build_comic_storyboard(
             "camera": "动态斜角镜头",
             "action": "通过前后对比，展示使用后的明显效果提升。",
             "emotion": "兴奋",
-            "dialogue": "效果很明显，效率提升了。",
+            "dialogue_hint": "由模型根据本格剧情与情绪自由构思对白，避免固定模板句。",
             "continuity_note": "动作与镜头变化要明显，但人物和产品一致。",
         },
         {
@@ -183,7 +183,7 @@ def build_comic_storyboard(
             "camera": "双人中景",
             "action": f"主角色向同伴演示并推荐 {product_name}。",
             "emotion": "自信",
-            "dialogue": "你也试试这个，真的好用。",
+            "dialogue_hint": "由模型根据本格剧情与情绪自由构思对白，避免固定模板句。",
             "continuity_note": "新增角色时，主角色和产品仍是视觉中心。",
         },
         {
@@ -191,7 +191,7 @@ def build_comic_storyboard(
             "camera": "收束特写镜头",
             "action": "角色与产品同框定格，形成海报级结尾画面。",
             "emotion": "满足",
-            "dialogue": "这就是我会持续使用的选择。",
+            "dialogue_hint": "由模型根据本格剧情与情绪自由构思对白，避免固定模板句。",
             "continuity_note": "作为结尾格，构图稳定，画面完成度高。",
         },
     ]
@@ -223,7 +223,7 @@ def build_comic_panel_prompt(
     camera_text = camera.strip() if camera.strip() else "中景"
     action_text = action.strip() if action.strip() else scene_description
     emotion_text = emotion.strip() if emotion.strip() else "积极自然"
-    dialogue_text = dialogue.strip() if dialogue.strip() else "简短口语对白"
+    dialogue_text = dialogue.strip() if dialogue.strip() else "请根据本格剧情与情绪自行构思一句自然对白，不要套用固定句子。"
     continuity_text = continuity_note.strip() if continuity_note.strip() else "保持角色与产品一致性"
 
     language_text = "简体中文" if language == "zh-CN" else "English"

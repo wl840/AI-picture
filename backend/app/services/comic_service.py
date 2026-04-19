@@ -189,7 +189,7 @@ class ComicService:
             camera = llm_panel.get("camera") or beat["camera"]
             action = llm_panel.get("action") or beat["action"]
             emotion = llm_panel.get("emotion") or beat["emotion"]
-            dialogue = llm_panel.get("dialogue") or beat["dialogue"]
+            dialogue = (llm_panel.get("dialogue") or beat.get("dialogue_hint", "")).strip()
             continuity_note = llm_panel.get("continuity_note") or beat["continuity_note"]
 
             fallback_prompt = build_comic_panel_prompt(

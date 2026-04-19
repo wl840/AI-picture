@@ -168,6 +168,7 @@ class ComicPromptService:
 3. 若有上一格参考图，它只能用于一致性校准，绝不能复刻上一格布局、动作和噪点纹理。
 4. 输出用于图像模型，描述要具体可执行，避免空泛词。
 5. 必须返回严格 JSON，不要返回 Markdown、解释性文字或代码块。
+6. `dialogue` 必须由你结合当前分镜的 action/emotion 现场原创，不得照抄草案中的提示语。
 
 输出 JSON 格式：
 {
@@ -204,6 +205,8 @@ class ComicPromptService:
 - 这是第 index/{panel_count} 格；
 - 与上一格相比必须有构图或动作推进；
 - 如果提供上一格参考图，仅作一致性参考，禁止复刻画面和噪点。
+- 每格 `dialogue` 都要原创，语气贴合该格情绪，不得使用固定模板句。
+- 若草案中出现 `dialogue_hint`，仅作方向参考，不能原样复述。
 """.strip()
 
         request_json = {
