@@ -8,7 +8,7 @@ from typing import Awaitable, Callable, Optional
 
 import httpx
 from fastapi import HTTPException
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from ..poster_config import ASPECT_RATIOS
 from ..prompt_engineering import build_comic_panel_prompt, build_comic_storyboard
@@ -19,9 +19,9 @@ from .storage import StorageService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = PROJECT_ROOT / "app" / "data"
-COMIC_COMPOSITE_LAYOUTS = {
-    4: {"mobile": (2, 2), "landscape": (4, 1)},
-    6: {"mobile": (2, 3), "landscape": (3, 2)},
+COMIC_LAYOUT_CANDIDATES = {
+    4: [(1, 4), (2, 2), (4, 1)],
+    6: [(1, 6), (2, 3), (3, 2), (6, 1)],
 }
 COMIC_COMPOSITE_CANVAS_SIZES = {
     "mobile": (1800, 3200),  # 9:16
@@ -175,30 +175,169 @@ def _resize_contain(panel: Image.Image, box_w: int, box_h: int, *, resample: int
     return panel.resize((out_w, out_h), resample=resample)
 
 
-def compose_comic_strip(panel_paths: list[Path], panel_count: int, composite_ratio_key: str) -> str:
-    if not panel_paths:
-        raise HTTPException(status_code=500, detail="no panel images to compose")
+def _resize_cover(panel: Image.Image, box_w: int, box_h: int, *, resample: int) -> Image.Image:
+    src_w, src_h = panel.size
+    scale = max(box_w / src_w, box_h / src_h)
+    out_w = max(1, int(src_w * scale))
+    out_h = max(1, int(src_h * scale))
+    return panel.resize((out_w, out_h), resample=resample)
 
-    layout_map = COMIC_COMPOSITE_LAYOUTS.get(panel_count)
-    if not layout_map:
-        raise HTTPException(status_code=500, detail=f"unsupported panel_count for composite: {panel_count}")
 
-    ratio_key = composite_ratio_key if composite_ratio_key in COMIC_COMPOSITE_CANVAS_SIZES else "mobile"
-    cols, rows = layout_map[ratio_key]
-    canvas_w, canvas_h = COMIC_COMPOSITE_CANVAS_SIZES[ratio_key]
-    outer_padding = max(24, int(min(canvas_w, canvas_h) * 0.025))
-    gutter = max(14, int(outer_padding * 0.6))
+def _compute_layout_spacing(canvas_w: int, canvas_h: int, cols: int, rows: int) -> tuple[int, int]:
+    base = min(canvas_w, canvas_h)
+    density = max(cols, rows)
+    padding_ratio = 0.025 if density <= 3 else 0.02
+    outer_padding = max(18, int(base * padding_ratio))
+    gutter_ratio = 0.65 if density <= 3 else 0.5
+    gutter = max(10, int(outer_padding * gutter_ratio))
+    return outer_padding, gutter
+
+
+def _layout_metrics(
+    *,
+    canvas_w: int,
+    canvas_h: int,
+    cols: int,
+    rows: int,
+    panel_sizes: list[tuple[int, int]],
+) -> Optional[dict]:
+    outer_padding, gutter = _compute_layout_spacing(canvas_w, canvas_h, cols, rows)
     usable_w = canvas_w - (outer_padding * 2) - (gutter * (cols - 1))
     usable_h = canvas_h - (outer_padding * 2) - (gutter * (rows - 1))
     cell_w = usable_w // cols
     cell_h = usable_h // rows
-
     if cell_w <= 0 or cell_h <= 0:
+        return None
+
+    cell_area = cell_w * cell_h
+    cell_aspect = cell_w / cell_h
+
+    occ_values: list[float] = []
+    mismatch_values: list[float] = []
+    for src_w, src_h in panel_sizes:
+        scale = min(cell_w / src_w, cell_h / src_h)
+        fit_w = src_w * scale
+        fit_h = src_h * scale
+        occ_values.append((fit_w * fit_h) / cell_area)
+
+        panel_aspect = src_w / src_h
+        mismatch_values.append(abs(panel_aspect - cell_aspect) / max(panel_aspect, cell_aspect))
+
+    occupancy = sum(occ_values) / len(occ_values)
+    aspect_mismatch = sum(mismatch_values) / len(mismatch_values)
+
+    is_landscape_canvas = canvas_w >= canvas_h
+    if is_landscape_canvas:
+        order_penalty = max(0.0, (rows - cols) / max(rows, cols))
+    else:
+        order_penalty = max(0.0, (cols - rows) / max(rows, cols))
+
+    score = (0.6 * occupancy) - (0.3 * aspect_mismatch) - (0.1 * order_penalty)
+    return {
+        "cols": cols,
+        "rows": rows,
+        "outer_padding": outer_padding,
+        "gutter": gutter,
+        "cell_w": cell_w,
+        "cell_h": cell_h,
+        "score": score,
+        "occupancy": occupancy,
+        "aspect_mismatch": aspect_mismatch,
+        "order_penalty": order_penalty,
+    }
+
+
+def _select_best_layout(
+    *,
+    panel_count: int,
+    canvas_w: int,
+    canvas_h: int,
+    panel_sizes: list[tuple[int, int]],
+) -> dict:
+    candidates = COMIC_LAYOUT_CANDIDATES.get(panel_count)
+    if not candidates:
+        raise HTTPException(status_code=500, detail=f"unsupported panel_count for composite: {panel_count}")
+
+    metrics_pool: list[dict] = []
+    for cols, rows in candidates:
+        metrics = _layout_metrics(
+            canvas_w=canvas_w,
+            canvas_h=canvas_h,
+            cols=cols,
+            rows=rows,
+            panel_sizes=panel_sizes,
+        )
+        if metrics:
+            metrics_pool.append(metrics)
+
+    if not metrics_pool:
         raise HTTPException(status_code=500, detail="invalid composite layout size")
+
+    metrics_pool.sort(key=lambda item: item["score"], reverse=True)
+    return metrics_pool[0]
+
+
+def _paste_panel_contain_blur(
+    *,
+    composite: Image.Image,
+    panel: Image.Image,
+    cell_x: int,
+    cell_y: int,
+    cell_w: int,
+    cell_h: int,
+    resample: int,
+) -> None:
+    # Background layer: cover + blur, to reduce obvious white bars without cropping the foreground subject.
+    bg = _resize_cover(panel, cell_w, cell_h, resample=resample)
+    bg_blur: Optional[Image.Image] = None
+    try:
+        crop_x = max(0, (bg.width - cell_w) // 2)
+        crop_y = max(0, (bg.height - cell_h) // 2)
+        bg_crop = bg.crop((crop_x, crop_y, crop_x + cell_w, crop_y + cell_h))
+        try:
+            blur_radius = max(5, int(min(cell_w, cell_h) * 0.015))
+            bg_blur = bg_crop.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            composite.paste(bg_blur, (cell_x, cell_y))
+        finally:
+            bg_crop.close()
+            if bg_blur:
+                bg_blur.close()
+    finally:
+        bg.close()
+
+    fitted = _resize_contain(panel, cell_w, cell_h, resample=resample)
+    try:
+        paste_x = cell_x + (cell_w - fitted.width) // 2
+        paste_y = cell_y + (cell_h - fitted.height) // 2
+        composite.paste(fitted, (paste_x, paste_y))
+    finally:
+        fitted.close()
+
+
+def compose_comic_strip(panel_paths: list[Path], panel_count: int, composite_ratio_key: str) -> str:
+    if not panel_paths:
+        raise HTTPException(status_code=500, detail="no panel images to compose")
+
+    ratio_key = composite_ratio_key if composite_ratio_key in COMIC_COMPOSITE_CANVAS_SIZES else "mobile"
+    canvas_w, canvas_h = COMIC_COMPOSITE_CANVAS_SIZES[ratio_key]
 
     resample = getattr(Image, "Resampling", Image).LANCZOS
     panels = [Image.open(p).convert("RGB") for p in panel_paths]
     try:
+        panel_sizes = [(panel.width, panel.height) for panel in panels]
+        best_layout = _select_best_layout(
+            panel_count=panel_count,
+            canvas_w=canvas_w,
+            canvas_h=canvas_h,
+            panel_sizes=panel_sizes,
+        )
+        cols = int(best_layout["cols"])
+        rows = int(best_layout["rows"])
+        outer_padding = int(best_layout["outer_padding"])
+        gutter = int(best_layout["gutter"])
+        cell_w = int(best_layout["cell_w"])
+        cell_h = int(best_layout["cell_h"])
+
         composite = Image.new("RGB", (canvas_w, canvas_h), color=(255, 255, 255))
         for i, panel in enumerate(panels):
             row = i // cols
@@ -208,11 +347,15 @@ def compose_comic_strip(panel_paths: list[Path], panel_count: int, composite_rat
 
             cell_x = outer_padding + (col * (cell_w + gutter))
             cell_y = outer_padding + (row * (cell_h + gutter))
-            fitted = _resize_contain(panel, cell_w, cell_h, resample=resample)
-            paste_x = cell_x + (cell_w - fitted.width) // 2
-            paste_y = cell_y + (cell_h - fitted.height) // 2
-            composite.paste(fitted, (paste_x, paste_y))
-            fitted.close()
+            _paste_panel_contain_blur(
+                composite=composite,
+                panel=panel,
+                cell_x=cell_x,
+                cell_y=cell_y,
+                cell_w=cell_w,
+                cell_h=cell_h,
+                resample=resample,
+            )
 
         GENERATED_DIR.mkdir(parents=True, exist_ok=True)
         out_name = f"comic_strip_{uuid.uuid4().hex}.png"
