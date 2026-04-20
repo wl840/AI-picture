@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+﻿const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
 export async function fetchPosterOptions() {
   const res = await fetch(`${API_BASE}/api/poster/options`);
@@ -91,11 +91,34 @@ export async function fetchGeneratedImages() {
   return res.json();
 }
 
+export async function fetchImageRecords() {
+  const res = await fetch(`${API_BASE}/api/poster/image-records`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`加载图片记录失败: ${text}`);
+  }
+  return res.json();
+}
+
 export async function deleteGeneratedImage(path) {
   const res = await fetch(`${API_BASE}/api/poster/generated-images/delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`删除失败: ${text}`);
+  }
+  return res.json();
+}
+
+export async function deleteImageRecord(recordId) {
+  const res = await fetch(`${API_BASE}/api/poster/image-records/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ record_id: recordId }),
   });
 
   if (!res.ok) {

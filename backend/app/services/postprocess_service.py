@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import base64
-import json
 import mimetypes
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -14,11 +12,11 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 from ..schemas import PostprocessImageRequest
 from .image_provider import ImageProviderService
+from .image_record_service import ImageRecordService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = PROJECT_ROOT / "app" / "data"
 UPLOAD_DIR = PROJECT_ROOT / "app" / "uploads"
-SOFT_DELETE_MARK_FILE = GENERATED_DIR / "generated_images_soft_deleted.json"
 
 
 class PostprocessService:
@@ -29,6 +27,18 @@ class PostprocessService:
         "C:/Windows/Fonts/arial.ttf",
         "arial.ttf",
     )
+    _LOGO_POSITION_EN = {
+        "top_left": "top-left",
+        "top_right": "top-right",
+        "bottom_left": "bottom-left",
+        "bottom_right": "bottom-right",
+    }
+    _LOGO_POSITION_ZH = {
+        "top_left": "左上角",
+        "top_right": "右上角",
+        "bottom_left": "左下角",
+        "bottom_right": "右下角",
+    }
 
     @staticmethod
     def _resolve_logo_file(upload_dir: Path, logo_id: str) -> Path:
@@ -50,38 +60,6 @@ class PostprocessService:
         if not local_path.exists():
             raise HTTPException(status_code=404, detail=f"image not found: {value}")
         return local_path
-
-    @staticmethod
-    def _normalize_generated_static_path(source_path: str) -> str:
-        value = source_path.strip()
-        if not value.startswith("/static/generated/"):
-            raise HTTPException(status_code=400, detail=f"unsupported generated image path: {value}")
-
-        filename = value.rsplit("/", 1)[-1]
-        if not filename:
-            raise HTTPException(status_code=400, detail=f"invalid generated image path: {value}")
-        return f"/static/generated/{filename}"
-
-    @staticmethod
-    def _load_soft_deleted_map() -> dict[str, str]:
-        if not SOFT_DELETE_MARK_FILE.exists():
-            return {}
-        try:
-            data = json.loads(SOFT_DELETE_MARK_FILE.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-
-        if not isinstance(data, dict):
-            return {}
-        return {str(k): str(v) for k, v in data.items() if isinstance(k, str)}
-
-    @staticmethod
-    def _save_soft_deleted_map(deleted_map: dict[str, str]) -> None:
-        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-        SOFT_DELETE_MARK_FILE.write_text(
-            json.dumps(deleted_map, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
 
     @staticmethod
     def _path_to_data_url(path: Path) -> str:
@@ -261,10 +239,15 @@ class PostprocessService:
 
         prompt = req.ai_prompt.strip()
         if logo_file:
+            position_en = PostprocessService._LOGO_POSITION_EN.get(req.logo_position, "bottom-right")
+            position_zh = PostprocessService._LOGO_POSITION_ZH.get(req.logo_position, "右下角")
             prompt = (
                 f"{prompt}\n"
                 "Two reference images are provided: first is the original image, second is the logo image. "
-                "Keep the original composition and style, and blend the logo naturally."
+                "Keep the original composition and style, and blend the logo naturally. "
+                f"Place exactly one logo at the {position_en} corner with a small margin from edges, "
+                "do not place it in other corners.\n"
+                f"请将 logo 固定放在{position_zh}，与画面边缘保持小间距，只出现一个 logo，不要放在其他位置。"
             )
 
         generated = await ImageProviderService.generate_image(
@@ -281,51 +264,16 @@ class PostprocessService:
 
     @staticmethod
     def list_generated_images(limit: int = 200) -> list[dict]:
-        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-        soft_deleted_map = PostprocessService._load_soft_deleted_map()
-        soft_deleted_paths = set(soft_deleted_map.keys())
-        candidates = [
-            p
-            for p in GENERATED_DIR.iterdir()
-            if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
-        ]
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        visible_candidates = []
-        for p in candidates:
-            static_path = f"/static/generated/{p.name}"
-            if static_path in soft_deleted_paths:
-                continue
-            visible_candidates.append((p, static_path))
-
-        items = []
-        for p, static_path in visible_candidates[:limit]:
-            stat = p.stat()
-            items.append(
-                {
-                    "path": static_path,
-                    "filename": p.name,
-                    "modified_at": stat.st_mtime,
-                    "size_bytes": stat.st_size,
-                }
-            )
-        return items
+        return ImageRecordService.list_generated_images(limit=limit)
 
     @staticmethod
     def mark_generated_image_deleted(source_path: str) -> dict:
-        normalized_path = PostprocessService._normalize_generated_static_path(source_path)
-        local_path = GENERATED_DIR / normalized_path.rsplit("/", 1)[-1]
-        if not local_path.exists():
-            raise HTTPException(status_code=404, detail=f"image not found: {normalized_path}")
-
-        deleted_map = PostprocessService._load_soft_deleted_map()
-        deleted_at = deleted_map.get(normalized_path) or datetime.now(timezone.utc).isoformat()
-        deleted_map[normalized_path] = deleted_at
-        PostprocessService._save_soft_deleted_map(deleted_map)
-        return {"ok": True, "path": normalized_path, "deleted_at": deleted_at}
+        return ImageRecordService.soft_delete_by_path(source_path)
 
     @staticmethod
     async def postprocess_images(req: PostprocessImageRequest, upload_dir: Path) -> dict:
         GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+        batch_id = uuid.uuid4().hex
 
         logo_file: Optional[Path] = None
         if req.logo_id:
@@ -380,6 +328,12 @@ class PostprocessService:
                     image.convert("RGB").save(out_path, format="PNG", optimize=True)
                     saved_path = f"/static/generated/{out_name}"
 
+                ImageRecordService.register_saved_image(
+                    saved_path=saved_path,
+                    source_type="postprocess",
+                    source_batch_id=batch_id,
+                    meta={"source_path": source_path, "process_mode": req.process_mode},
+                )
                 items.append({"source_path": source_path, "saved_path": saved_path, "error": None})
             except HTTPException as exc:
                 items.append({"source_path": source_path, "saved_path": None, "error": str(exc.detail)})

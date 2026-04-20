@@ -1,14 +1,16 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import {
   deleteGeneratedImage,
-  fetchGeneratedImages,
+  deleteImageRecord,
+  fetchImageRecords,
   postprocessImages,
   toAbsoluteUrl,
   uploadLogo,
 } from "../api";
 
 const DEFAULT_IMAGE_BASE_URL =
-  import.meta.env.VITE_IMAGE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  import.meta.env.VITE_IMAGE_BASE_URL ||
+  "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 
 const initialForm = {
   processMode: "local",
@@ -19,7 +21,7 @@ const initialForm = {
   textContent: "",
   textPosition: "top_left",
   apiKey: import.meta.env.VITE_DEFAULT_API_KEY || "",
-  model: "qwen-image-2.0-pro",
+  model: "qwen-image-edit-max",
   baseUrl: DEFAULT_IMAGE_BASE_URL,
   aiPrompt:
     "在保持原图主体构图与风格的前提下，融合参考logo到画面中，保证清晰、自然，不遮挡主体，不要水印和乱码。",
@@ -35,7 +37,7 @@ function PostprocessPage() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [deletingPath, setDeletingPath] = useState("");
+  const [deletingKey, setDeletingKey] = useState("");
 
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
 
@@ -47,7 +49,7 @@ function PostprocessPage() {
     setLoadingList(true);
     setError("");
     try {
-      const list = await fetchGeneratedImages();
+      const list = await fetchImageRecords();
       const nextImages = list || [];
       setImages(nextImages);
       const visiblePathSet = new Set(nextImages.map((item) => item.path));
@@ -91,23 +93,28 @@ function PostprocessPage() {
     setSelectedPaths([]);
   };
 
-  const onDeleteImage = async (path) => {
+  const onDeleteImage = async (item) => {
     const confirmed = window.confirm("确认删除这张图片记录吗？删除仅做标记，不会物理删除文件。");
     if (!confirmed) return;
 
-    setDeletingPath(path);
+    const deleteKey = item.record_id || item.path;
+    setDeletingKey(deleteKey);
     setError("");
     setMessage("");
     try {
-      await deleteGeneratedImage(path);
-      setImages((prev) => prev.filter((item) => item.path !== path));
-      setSelectedPaths((prev) => prev.filter((itemPath) => itemPath !== path));
+      if (item.record_id) {
+        await deleteImageRecord(item.record_id);
+      } else {
+        await deleteGeneratedImage(item.path);
+      }
+      setImages((prev) => prev.filter((row) => (row.record_id || row.path) !== deleteKey));
+      setSelectedPaths((prev) => prev.filter((itemPath) => itemPath !== item.path));
       setMessage("删除成功");
     } catch (err) {
       setError(err.message || "删除失败");
       setMessage("删除失败");
     } finally {
-      setDeletingPath("");
+      setDeletingKey("");
     }
   };
 
@@ -149,11 +156,11 @@ function PostprocessPage() {
       });
 
       const success = result?.success_count || 0;
-      const failed = (result?.items || []).filter((item) => item.error).length;
+      const failed = (result?.items || []).filter((entry) => entry.error).length;
       setMessage(`处理完成：成功 ${success} 张，失败 ${failed} 张。`);
 
       await loadImages();
-      const newPaths = (result?.items || []).map((item) => item.saved_path).filter(Boolean);
+      const newPaths = (result?.items || []).map((entry) => entry.saved_path).filter(Boolean);
       setSelectedPaths(newPaths);
     } catch (err) {
       setError(err.message || "后处理失败");
@@ -259,7 +266,7 @@ function PostprocessPage() {
 
                 <input
                   type="text"
-                  placeholder="模型名（如 qwen-image-2.0-pro）"
+                  placeholder="模型名（如 qwen-image-edit-max）"
                   value={form.model}
                   onChange={(e) => updateField("model", e.target.value)}
                 />
@@ -312,40 +319,43 @@ function PostprocessPage() {
           </div>
 
           <div className="set-grid postprocess-list">
-            {images.map((item) => (
-              <div key={item.path} className="set-card">
-                <div className="set-card-head">
-                  <strong title={item.filename}>{item.filename}</strong>
-                  <div className="set-card-head-actions">
-                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedSet.has(item.path)}
-                        onChange={() => togglePath(item.path)}
-                      />
-                      选择
-                    </label>
-                    <button
-                      type="button"
-                      className="icon-btn-danger"
-                      onClick={() => onDeleteImage(item.path)}
-                      disabled={deletingPath === item.path}
-                      title="删除图片记录"
-                      aria-label="删除图片记录"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12h8a2 2 0 0 0 2-2V9H6v10a2 2 0 0 0 2 2z" />
-                      </svg>
-                    </button>
+            {images.map((item) => {
+              const itemKey = item.record_id || item.path;
+              return (
+                <div key={itemKey} className="set-card">
+                  <div className="set-card-head">
+                    <strong title={item.filename}>{item.filename}</strong>
+                    <div className="set-card-head-actions">
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedSet.has(item.path)}
+                          onChange={() => togglePath(item.path)}
+                        />
+                        选择
+                      </label>
+                      <button
+                        type="button"
+                        className="icon-btn-danger"
+                        onClick={() => onDeleteImage(item)}
+                        disabled={deletingKey === itemKey}
+                        title="删除图片记录"
+                        aria-label="删除图片记录"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12h8a2 2 0 0 0 2-2V9H6v10a2 2 0 0 0 2 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="set-image-box">
-                  <img src={toAbsoluteUrl(item.path)} alt={item.filename} className="set-image" />
+                  <div className="set-image-box">
+                    <img src={toAbsoluteUrl(item.path)} alt={item.filename} className="set-image" />
+                  </div>
+                  <small className="tip">{item.path}</small>
                 </div>
-                <small className="tip">{item.path}</small>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </aside>
       </main>

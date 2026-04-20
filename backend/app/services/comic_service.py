@@ -19,6 +19,14 @@ from .storage import StorageService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = PROJECT_ROOT / "app" / "data"
+COMIC_COMPOSITE_LAYOUTS = {
+    4: {"mobile": (2, 2), "landscape": (4, 1)},
+    6: {"mobile": (2, 3), "landscape": (3, 2)},
+}
+COMIC_COMPOSITE_CANVAS_SIZES = {
+    "mobile": (1800, 3200),  # 9:16
+    "landscape": (3200, 1800),  # 16:9
+}
 
 
 def _path_to_data_url(local_path: Path) -> str:
@@ -116,30 +124,61 @@ async def _emit_progress(
         await maybe
 
 
-def compose_comic_strip(panel_paths: list[Path], panel_count: int) -> str:
+def _resize_contain(panel: Image.Image, box_w: int, box_h: int, *, resample: int) -> Image.Image:
+    src_w, src_h = panel.size
+    scale = min(box_w / src_w, box_h / src_h)
+    out_w = max(1, int(src_w * scale))
+    out_h = max(1, int(src_h * scale))
+    return panel.resize((out_w, out_h), resample=resample)
+
+
+def compose_comic_strip(panel_paths: list[Path], panel_count: int, composite_ratio_key: str) -> str:
+    if not panel_paths:
+        raise HTTPException(status_code=500, detail="no panel images to compose")
+
+    layout_map = COMIC_COMPOSITE_LAYOUTS.get(panel_count)
+    if not layout_map:
+        raise HTTPException(status_code=500, detail=f"unsupported panel_count for composite: {panel_count}")
+
+    ratio_key = composite_ratio_key if composite_ratio_key in COMIC_COMPOSITE_CANVAS_SIZES else "mobile"
+    cols, rows = layout_map[ratio_key]
+    canvas_w, canvas_h = COMIC_COMPOSITE_CANVAS_SIZES[ratio_key]
+    outer_padding = max(24, int(min(canvas_w, canvas_h) * 0.025))
+    gutter = max(14, int(outer_padding * 0.6))
+    usable_w = canvas_w - (outer_padding * 2) - (gutter * (cols - 1))
+    usable_h = canvas_h - (outer_padding * 2) - (gutter * (rows - 1))
+    cell_w = usable_w // cols
+    cell_h = usable_h // rows
+
+    if cell_w <= 0 or cell_h <= 0:
+        raise HTTPException(status_code=500, detail="invalid composite layout size")
+
+    resample = getattr(Image, "Resampling", Image).LANCZOS
     panels = [Image.open(p).convert("RGB") for p in panel_paths]
-    pw, ph = panels[0].size
+    try:
+        composite = Image.new("RGB", (canvas_w, canvas_h), color=(255, 255, 255))
+        for i, panel in enumerate(panels):
+            row = i // cols
+            col = i % cols
+            if row >= rows:
+                break
 
-    if panel_count == 4:
-        cols, rows = 2, 2
-    else:  # 6
-        cols, rows = 3, 2
+            cell_x = outer_padding + (col * (cell_w + gutter))
+            cell_y = outer_padding + (row * (cell_h + gutter))
+            fitted = _resize_contain(panel, cell_w, cell_h, resample=resample)
+            paste_x = cell_x + (cell_w - fitted.width) // 2
+            paste_y = cell_y + (cell_h - fitted.height) // 2
+            composite.paste(fitted, (paste_x, paste_y))
+            fitted.close()
 
-    total_w = cols * pw
-    total_h = rows * ph
-    composite = Image.new("RGB", (total_w, total_h), color=(255, 255, 255))
+        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+        out_name = f"comic_strip_{uuid.uuid4().hex}.png"
+        out_path = GENERATED_DIR / out_name
+        composite.save(out_path, format="PNG", optimize=True)
+    finally:
+        for panel in panels:
+            panel.close()
 
-    for i, panel in enumerate(panels):
-        row = i // cols
-        col = i % cols
-        x = col * pw
-        y = row * ph
-        composite.paste(panel, (x, y))
-
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    out_name = f"comic_strip_{uuid.uuid4().hex}.png"
-    out_path = GENERATED_DIR / out_name
-    composite.save(out_path, format="PNG", optimize=True)
     return f"/static/generated/{out_name}"
 
 
@@ -276,7 +315,7 @@ class ComicService:
 
         composite_path: Optional[str] = None
         if len(local_paths) == req.panel_count:
-            composite_path = compose_comic_strip(local_paths, req.panel_count)
+            composite_path = compose_comic_strip(local_paths, req.panel_count, req.composite_ratio_key)
 
         return {
             "panel_count": req.panel_count,

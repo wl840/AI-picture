@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import uuid
@@ -12,6 +12,7 @@ from ..prompt_engineering import build_poster_prompt
 from ..schemas import GeneratePosterRequest
 from .image_postprocess import add_logo_to_image
 from .image_provider import ImageProviderService
+from .image_record_service import ImageRecordService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = PROJECT_ROOT / "app" / "data"
@@ -30,10 +31,7 @@ class PosterService:
         async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.get(image_url)
         if resp.status_code >= 400:
-            raise HTTPException(
-                status_code=502,
-                detail=f"下载模型返回图片失败: status={resp.status_code}",
-            )
+            raise HTTPException(status_code=502, detail=f"下载模型返回图片失败: status={resp.status_code}")
 
         GENERATED_DIR.mkdir(parents=True, exist_ok=True)
         out = GENERATED_DIR / f"generated_remote_{uuid.uuid4().hex}.png"
@@ -61,6 +59,7 @@ class PosterService:
 
     @staticmethod
     async def generate_poster(req: GeneratePosterRequest, upload_dir: Path) -> dict:
+        batch_id = uuid.uuid4().hex
         logo_file_path: Optional[Path] = None
         if req.logo_id:
             logo_file_path = PosterService._resolve_logo_file(upload_dir, req.logo_id)
@@ -84,16 +83,26 @@ class PosterService:
             reference_images_data_urls=None,
         )
 
+        base_poster_path = await PosterService._ensure_local_image_path(image)
+        saved_path = f"/static/generated/{base_poster_path.name}"
+
         if logo_file_path:
-            base_poster_path = await PosterService._ensure_local_image_path(image)
             merged_path = add_logo_to_image(
                 image_path=str(base_poster_path),
                 logo_path=str(logo_file_path),
                 position=req.logo_position or "top_right",
             )
-            return {
-                "prompt": prompt,
-                "saved_path": f"/static/generated/{Path(merged_path).name}",
-            }
+            saved_path = f"/static/generated/{Path(merged_path).name}"
 
-        return {"prompt": prompt, **image}
+        ImageRecordService.register_saved_image(
+            saved_path=saved_path,
+            source_type="poster",
+            source_batch_id=batch_id,
+            meta={
+                "template_key": req.template_key,
+                "style": req.style,
+                "ratio_key": req.ratio_key,
+                "logo_mode": req.logo_mode,
+            },
+        )
+        return {"prompt": prompt, **image, "saved_path": saved_path}

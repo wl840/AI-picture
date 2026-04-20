@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from .poster_config import ASPECT_RATIOS, STYLES, TEMPLATES
 from .schemas import (
     ComicPanelItem,
+    DeleteImageRecordRequest,
+    DeleteImageRecordResponse,
     DeleteGeneratedImageRequest,
     DeleteGeneratedImageResponse,
     GeneratedImageItemResponse,
@@ -21,6 +23,7 @@ from .schemas import (
     GeneratePosterResponse,
     GenerateProductSetRequest,
     GenerateProductSetResponse,
+    ImageRecordItemResponse,
     PostprocessImageRequest,
     PostprocessImageResponse,
     UploadLogoResponse,
@@ -28,6 +31,7 @@ from .schemas import (
 )
 from .services.comic_service import ComicService
 from .services.comic_task_service import ComicTaskService
+from .services.image_record_service import ImageRecordService
 from .services.postprocess_service import PostprocessService
 from .services.poster_service import PosterService
 from .services.product_set_service import ProductSetService
@@ -93,6 +97,18 @@ async def postprocess_images(req: PostprocessImageRequest) -> PostprocessImageRe
 async def list_generated_images() -> list[GeneratedImageItemResponse]:
     items = PostprocessService.list_generated_images()
     return [GeneratedImageItemResponse(**item) for item in items]
+
+
+@app.get("/api/poster/image-records", response_model=list[ImageRecordItemResponse])
+async def list_image_records() -> list[ImageRecordItemResponse]:
+    items = ImageRecordService.list_image_records()
+    return [ImageRecordItemResponse(**item) for item in items]
+
+
+@app.post("/api/poster/image-records/delete", response_model=DeleteImageRecordResponse)
+async def delete_image_record(req: DeleteImageRecordRequest) -> DeleteImageRecordResponse:
+    result = ImageRecordService.soft_delete_record(req.record_id)
+    return DeleteImageRecordResponse(**result)
 
 
 @app.post("/api/poster/generated-images/delete", response_model=DeleteGeneratedImageResponse)

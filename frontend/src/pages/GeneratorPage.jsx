@@ -14,6 +14,10 @@ const DEFAULT_IMAGE_MODEL = "qwen-image-2.0-pro";
 const DEFAULT_COMIC_MODEL = "wan2.7-image";
 const DEFAULT_IMAGE_BASE_URL =
   import.meta.env.VITE_IMAGE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const COMIC_COMPOSITE_RATIO_OPTIONS = [
+  { key: "mobile", label: "9:16 竖版长图" },
+  { key: "landscape", label: "16:9 横版长图" },
+];
 
 const initialForm = {
   apiKey: import.meta.env.VITE_DEFAULT_API_KEY || "",
@@ -25,6 +29,7 @@ const initialForm = {
   specsText: "",
   style: "",
   ratioKey: "square",
+  comicCompositeRatioKey: "mobile",
   logoMode: "fixed",
   logoPosition: "top_right",
 };
@@ -39,19 +44,29 @@ function GeneratorPage() {
   const [comicResult, setComicResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [productSetLoading, setProductSetLoading] = useState(false);
-  const [comicLoading, setComicLoading] = useState(false);  const [panelCount, setPanelCount] = useState(4);
+  const [comicLoading, setComicLoading] = useState(false);
+  const [panelCount, setPanelCount] = useState(4);
   const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadOptions() {
       try {
         const data = await fetchPosterOptions();
+        const ratioKeys = Object.keys(data.aspect_ratios || {});
+        const defaultRatioKey = ratioKeys[0] || "square";
+        const defaultCompositeRatioKey = ratioKeys.includes("mobile")
+          ? "mobile"
+          : ratioKeys.includes("landscape")
+          ? "landscape"
+          : "mobile";
+
         setOptions(data);
         setForm((prev) => ({
           ...prev,
           templateKey: data.templates?.[0]?.key || "festival_promo",
           style: data.styles?.[0]?.key || "american_comic",
-          ratioKey: Object.keys(data.aspect_ratios || {})[0] || "square",
+          ratioKey: defaultRatioKey,
+          comicCompositeRatioKey: defaultCompositeRatioKey,
         }));
       } catch (err) {
         setError(err.message || "配置加载失败");
@@ -228,6 +243,7 @@ function GeneratorPage() {
         product_image_id: productImageInfo?.product_image_id || null,
         style: form.style,
         ratio_key: form.ratioKey,
+        composite_ratio_key: form.comicCompositeRatioKey,
         panel_count: panelCount,
         product_description: form.description.trim(),
         character_description: form.description.trim(),
@@ -291,10 +307,10 @@ function GeneratorPage() {
 
       <main className="board">
         <section className="panel form-panel">
-          <h1>海报与商品五图生成</h1>
+          <h1>海报生成</h1>
 
           <div className="section">
-            <h2>选择模板（海报模式）</h2>
+            <h2>选择模板</h2>
             <div className="template-grid">
               {(options?.templates || []).map((template) => (
                 <button
@@ -382,7 +398,7 @@ function GeneratorPage() {
           </div>
 
           <div className="section">
-            <h2>品牌 Logo（海报模式可选）</h2>
+            <h2>品牌 Logo</h2>
             <div className="form-group">
               <select
                 value={form.logoPosition}
@@ -404,17 +420,18 @@ function GeneratorPage() {
           </div>
 
           <div className="section">
-            <h2>产品参考图（五图模式必传）</h2>
+            <h2>产品参考图</h2>
             <div className="upload-row">
               <input type="file" accept="image/*" onChange={onUploadProductImage} />
               <div className="upload-info">
                 {productImageInfo ? `已上传：${productImageInfo.filename}` : "未上传"}
               </div>
             </div>
-          </div>          {error ? <div className="error-box">{error}</div> : null}
+          </div>
+          {error ? <div className="error-box">{error}</div> : null}
 
           <div className="section">
-            <h2>漫画海报 — 格数选择</h2>
+            <h2>漫画海报 — 格数与最终比例</h2>
             <div className="chips">
               {[4, 6].map((n) => (
                 <button
@@ -427,7 +444,22 @@ function GeneratorPage() {
                 </button>
               ))}
             </div>
-            <p className="tip" style={{ marginTop: 6 }}>逐格生成，角色一致性最高，约需 {panelCount} 分钟</p>
+            <div className="chips" style={{ marginTop: 10 }}>
+              {COMIC_COMPOSITE_RATIO_OPTIONS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`chip ${form.comicCompositeRatioKey === item.key ? "active" : ""}`}
+                  onClick={() => updateField("comicCompositeRatioKey", item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="tip" style={{ marginTop: 6 }}>
+              逐格生成，角色一致性最高，约需 {panelCount} 分钟；最终漫画条输出比例为{" "}
+              {form.comicCompositeRatioKey === "landscape" ? "16:9" : "9:16"}。
+            </p>
           </div>
 
           <div className="action-grid">

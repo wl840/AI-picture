@@ -68,8 +68,8 @@ class PostprocessImageRequest(BaseModel):
     text_color: str = Field(default="#FFFFFF", min_length=4, max_length=9)
 
     api_key: Optional[str] = Field(default=None, min_length=10, description="Required when process_mode=ai")
-    model: str = Field(default="qwen-image-2.0-pro")
-    base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    model: str = Field(default="qwen-image-edit-max")
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
     ai_prompt: str = Field(
         default="在保持原图主体构图与风格的前提下，融合参考logo到画面中，保证清晰、自然、不遮挡主体，不要水印和乱码。",
         max_length=1000,
@@ -97,6 +97,14 @@ class PostprocessImageRequest(BaseModel):
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @field_validator("model")
+    @classmethod
+    def normalize_model_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized.lower() == "qwen-image-edit-max":
+            return "qwen-image-edit-max"
+        return normalized
 
     @model_validator(mode="after")
     def require_any_overlay(self) -> "PostprocessImageRequest":
@@ -126,10 +134,14 @@ class PostprocessImageResponse(BaseModel):
 
 
 class GeneratedImageItemResponse(BaseModel):
+    record_id: Optional[str] = None
     path: str
     filename: str
     modified_at: float
     size_bytes: int
+    source_type: Optional[str] = None
+    source_batch_id: Optional[str] = None
+    source_slot: Optional[str] = None
 
 
 class DeleteGeneratedImageRequest(BaseModel):
@@ -138,6 +150,32 @@ class DeleteGeneratedImageRequest(BaseModel):
 
 class DeleteGeneratedImageResponse(BaseModel):
     ok: bool
+    record_id: Optional[str] = None
+    path: str
+    deleted_at: str
+
+
+class ImageRecordItemResponse(BaseModel):
+    record_id: str
+    path: str
+    filename: str
+    source_type: str
+    source_batch_id: Optional[str] = None
+    source_slot: Optional[str] = None
+    created_at: str
+    updated_at: str
+    deleted_at: Optional[str] = None
+    modified_at: float
+    size_bytes: int
+
+
+class DeleteImageRecordRequest(BaseModel):
+    record_id: str = Field(..., min_length=1)
+
+
+class DeleteImageRecordResponse(BaseModel):
+    ok: bool
+    record_id: str
     path: str
     deleted_at: str
 
@@ -195,6 +233,7 @@ class GenerateComicRequest(BaseModel):
     product_image_id: Optional[str] = Field(default=None, min_length=8)
     style: str = Field(default="american_comic")
     ratio_key: str = Field(default="square")
+    composite_ratio_key: Literal["mobile", "landscape"] = Field(default="mobile")
     panel_count: Literal[4, 6] = Field(default=4)
     product_description: str = Field(default="")
     character_description: str = Field(default="")
