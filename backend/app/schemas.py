@@ -132,6 +132,16 @@ class GeneratedImageItemResponse(BaseModel):
     size_bytes: int
 
 
+class DeleteGeneratedImageRequest(BaseModel):
+    path: str = Field(..., min_length=1, description="Generated image path, e.g. /static/generated/xxx.png")
+
+
+class DeleteGeneratedImageResponse(BaseModel):
+    ok: bool
+    path: str
+    deleted_at: str
+
+
 class UploadLogoResponse(BaseModel):
     logo_id: str
     filename: str

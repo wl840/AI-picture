@@ -528,6 +528,44 @@ textarea {
   gap: 8px;
 }
 
+.set-card-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.icon-btn-danger {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #f2c3bf;
+  border-radius: 8px;
+  background: #fff4f2;
+  color: #b62a20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.icon-btn-danger:hover {
+  background: #ffe9e6;
+  border-color: #e78f88;
+}
+
+.icon-btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.icon-btn-danger svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
 .set-status {
   font-size: 12px;
   border-radius: 999px;

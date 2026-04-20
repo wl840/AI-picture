@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import {
+  deleteGeneratedImage,
   fetchGeneratedImages,
   postprocessImages,
   toAbsoluteUrl,
@@ -34,6 +35,7 @@ function PostprocessPage() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [deletingPath, setDeletingPath] = useState("");
 
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
 
@@ -46,7 +48,10 @@ function PostprocessPage() {
     setError("");
     try {
       const list = await fetchGeneratedImages();
-      setImages(list || []);
+      const nextImages = list || [];
+      setImages(nextImages);
+      const visiblePathSet = new Set(nextImages.map((item) => item.path));
+      setSelectedPaths((prev) => prev.filter((path) => visiblePathSet.has(path)));
     } catch (err) {
       setError(err.message || "加载图片列表失败");
     } finally {
@@ -86,6 +91,26 @@ function PostprocessPage() {
     setSelectedPaths([]);
   };
 
+  const onDeleteImage = async (path) => {
+    const confirmed = window.confirm("确认删除这张图片记录吗？删除仅做标记，不会物理删除文件。");
+    if (!confirmed) return;
+
+    setDeletingPath(path);
+    setError("");
+    setMessage("");
+    try {
+      await deleteGeneratedImage(path);
+      setImages((prev) => prev.filter((item) => item.path !== path));
+      setSelectedPaths((prev) => prev.filter((itemPath) => itemPath !== path));
+      setMessage("删除成功");
+    } catch (err) {
+      setError(err.message || "删除失败");
+      setMessage("删除失败");
+    } finally {
+      setDeletingPath("");
+    }
+  };
+
   const runPostprocess = async () => {
     if (!selectedPaths.length) {
       setError("请先选择要处理的图片。");
@@ -97,6 +122,7 @@ function PostprocessPage() {
       setError("本地模式下请至少启用一项：Logo、水印或文字。");
       return;
     }
+
     if (form.processMode === "ai" && !form.apiKey.trim()) {
       setError("AI 模式需要 API Key。");
       return;
@@ -121,9 +147,11 @@ function PostprocessPage() {
         ai_prompt: form.aiPrompt.trim(),
         ai_ratio_key: form.aiRatioKey,
       });
+
       const success = result?.success_count || 0;
       const failed = (result?.items || []).filter((item) => item.error).length;
       setMessage(`处理完成：成功 ${success} 张，失败 ${failed} 张。`);
+
       await loadImages();
       const newPaths = (result?.items || []).map((item) => item.saved_path).filter(Boolean);
       setSelectedPaths(newPaths);
@@ -139,6 +167,7 @@ function PostprocessPage() {
       <main className="board postprocess-board">
         <section className="panel form-panel">
           <h1>后处理中心</h1>
+
           <div className="section">
             <h2>处理模式</h2>
             <div className="chips">
@@ -169,12 +198,14 @@ function PostprocessPage() {
                 />
                 使用 logo 参考图（本地叠加和 AI 模式都可用）
               </label>
+
               <select value={form.logoPosition} onChange={(e) => updateField("logoPosition", e.target.value)}>
                 <option value="top_left">Logo：左上角</option>
                 <option value="top_right">Logo：右上角</option>
                 <option value="bottom_left">Logo：左下角</option>
                 <option value="bottom_right">Logo：右下角</option>
               </select>
+
               <input type="file" accept="image/*" onChange={onUploadLogo} />
             </div>
             <p className="tip">{logoInfo ? `已上传：${logoInfo.filename}` : "未上传 logo（可选）"}</p>
@@ -190,22 +221,22 @@ function PostprocessPage() {
                   value={form.watermarkText}
                   onChange={(e) => updateField("watermarkText", e.target.value)}
                 />
-                <select
-                  value={form.watermarkPosition}
-                  onChange={(e) => updateField("watermarkPosition", e.target.value)}
-                >
+
+                <select value={form.watermarkPosition} onChange={(e) => updateField("watermarkPosition", e.target.value)}>
                   <option value="top_left">水印：左上角</option>
                   <option value="top_right">水印：右上角</option>
                   <option value="bottom_left">水印：左下角</option>
                   <option value="bottom_right">水印：右下角</option>
                   <option value="center">水印：居中</option>
                 </select>
+
                 <input
                   type="text"
                   placeholder="自定义文字（可选）"
                   value={form.textContent}
                   onChange={(e) => updateField("textContent", e.target.value)}
                 />
+
                 <select value={form.textPosition} onChange={(e) => updateField("textPosition", e.target.value)}>
                   <option value="top_left">文字：左上角</option>
                   <option value="top_right">文字：右上角</option>
@@ -225,30 +256,34 @@ function PostprocessPage() {
                   value={form.apiKey}
                   onChange={(e) => updateField("apiKey", e.target.value)}
                 />
+
                 <input
                   type="text"
                   placeholder="模型名（如 qwen-image-2.0-pro）"
                   value={form.model}
                   onChange={(e) => updateField("model", e.target.value)}
                 />
+
                 <input
                   type="text"
                   placeholder="Base URL"
                   value={form.baseUrl}
                   onChange={(e) => updateField("baseUrl", e.target.value)}
                 />
+
                 <select value={form.aiRatioKey} onChange={(e) => updateField("aiRatioKey", e.target.value)}>
                   <option value="square">1:1</option>
                   <option value="mobile">9:16</option>
                   <option value="landscape">16:9</option>
                 </select>
+
                 <textarea
                   placeholder="AI 编辑提示词"
                   value={form.aiPrompt}
                   onChange={(e) => updateField("aiPrompt", e.target.value)}
                 />
               </div>
-              <p className="tip">AI 模式会把“原图 + logo图（如果上传）”一起作为参考图发给模型。</p>
+              <p className="tip">AI 模式会把原图和 logo 图（如果上传）一起作为参考图发给模型。</p>
             </div>
           )}
 
@@ -275,20 +310,36 @@ function PostprocessPage() {
               清空选择
             </button>
           </div>
+
           <div className="set-grid postprocess-list">
             {images.map((item) => (
               <div key={item.path} className="set-card">
                 <div className="set-card-head">
                   <strong title={item.filename}>{item.filename}</strong>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedSet.has(item.path)}
-                      onChange={() => togglePath(item.path)}
-                    />
-                    选择
-                  </label>
+                  <div className="set-card-head-actions">
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSet.has(item.path)}
+                        onChange={() => togglePath(item.path)}
+                      />
+                      选择
+                    </label>
+                    <button
+                      type="button"
+                      className="icon-btn-danger"
+                      onClick={() => onDeleteImage(item.path)}
+                      disabled={deletingPath === item.path}
+                      title="删除图片记录"
+                      aria-label="删除图片记录"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12h8a2 2 0 0 0 2-2V9H6v10a2 2 0 0 0 2 2z" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
+
                 <div className="set-image-box">
                   <img src={toAbsoluteUrl(item.path)} alt={item.filename} className="set-image" />
                 </div>

@@ -91,6 +91,20 @@ export async function fetchGeneratedImages() {
   return res.json();
 }
 
+export async function deleteGeneratedImage(path) {
+  const res = await fetch(`${API_BASE}/api/poster/generated-images/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`删除失败: ${text}`);
+  }
+  return res.json();
+}
+
 export async function generateComic(payload) {
   const res = await fetch(`${API_BASE}/api/poster/generate-comic`, {
     method: "POST",

@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from .poster_config import ASPECT_RATIOS, STYLES, TEMPLATES
 from .schemas import (
     ComicPanelItem,
+    DeleteGeneratedImageRequest,
+    DeleteGeneratedImageResponse,
     GeneratedImageItemResponse,
     GenerateComicRequest,
     GenerateComicResponse,
@@ -91,6 +93,12 @@ async def postprocess_images(req: PostprocessImageRequest) -> PostprocessImageRe
 async def list_generated_images() -> list[GeneratedImageItemResponse]:
     items = PostprocessService.list_generated_images()
     return [GeneratedImageItemResponse(**item) for item in items]
+
+
+@app.post("/api/poster/generated-images/delete", response_model=DeleteGeneratedImageResponse)
+async def delete_generated_image(req: DeleteGeneratedImageRequest) -> DeleteGeneratedImageResponse:
+    result = PostprocessService.mark_generated_image_deleted(req.path)
+    return DeleteGeneratedImageResponse(**result)
 
 
 @app.post("/api/product/upload-image", response_model=UploadProductImageResponse)

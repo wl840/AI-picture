@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +18,7 @@ from .image_provider import ImageProviderService
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_DIR = PROJECT_ROOT / "app" / "data"
 UPLOAD_DIR = PROJECT_ROOT / "app" / "uploads"
+SOFT_DELETE_MARK_FILE = GENERATED_DIR / "generated_images_soft_deleted.json"
 
 
 class PostprocessService:
@@ -47,6 +50,38 @@ class PostprocessService:
         if not local_path.exists():
             raise HTTPException(status_code=404, detail=f"image not found: {value}")
         return local_path
+
+    @staticmethod
+    def _normalize_generated_static_path(source_path: str) -> str:
+        value = source_path.strip()
+        if not value.startswith("/static/generated/"):
+            raise HTTPException(status_code=400, detail=f"unsupported generated image path: {value}")
+
+        filename = value.rsplit("/", 1)[-1]
+        if not filename:
+            raise HTTPException(status_code=400, detail=f"invalid generated image path: {value}")
+        return f"/static/generated/{filename}"
+
+    @staticmethod
+    def _load_soft_deleted_map() -> dict[str, str]:
+        if not SOFT_DELETE_MARK_FILE.exists():
+            return {}
+        try:
+            data = json.loads(SOFT_DELETE_MARK_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        if not isinstance(data, dict):
+            return {}
+        return {str(k): str(v) for k, v in data.items() if isinstance(k, str)}
+
+    @staticmethod
+    def _save_soft_deleted_map(deleted_map: dict[str, str]) -> None:
+        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+        SOFT_DELETE_MARK_FILE.write_text(
+            json.dumps(deleted_map, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _path_to_data_url(path: Path) -> str:
@@ -247,24 +282,46 @@ class PostprocessService:
     @staticmethod
     def list_generated_images(limit: int = 200) -> list[dict]:
         GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+        soft_deleted_map = PostprocessService._load_soft_deleted_map()
+        soft_deleted_paths = set(soft_deleted_map.keys())
         candidates = [
             p
             for p in GENERATED_DIR.iterdir()
             if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
         ]
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        visible_candidates = []
+        for p in candidates:
+            static_path = f"/static/generated/{p.name}"
+            if static_path in soft_deleted_paths:
+                continue
+            visible_candidates.append((p, static_path))
+
         items = []
-        for p in candidates[:limit]:
+        for p, static_path in visible_candidates[:limit]:
             stat = p.stat()
             items.append(
                 {
-                    "path": f"/static/generated/{p.name}",
+                    "path": static_path,
                     "filename": p.name,
                     "modified_at": stat.st_mtime,
                     "size_bytes": stat.st_size,
                 }
             )
         return items
+
+    @staticmethod
+    def mark_generated_image_deleted(source_path: str) -> dict:
+        normalized_path = PostprocessService._normalize_generated_static_path(source_path)
+        local_path = GENERATED_DIR / normalized_path.rsplit("/", 1)[-1]
+        if not local_path.exists():
+            raise HTTPException(status_code=404, detail=f"image not found: {normalized_path}")
+
+        deleted_map = PostprocessService._load_soft_deleted_map()
+        deleted_at = deleted_map.get(normalized_path) or datetime.now(timezone.utc).isoformat()
+        deleted_map[normalized_path] = deleted_at
+        PostprocessService._save_soft_deleted_map(deleted_map)
+        return {"ok": True, "path": normalized_path, "deleted_at": deleted_at}
 
     @staticmethod
     async def postprocess_images(req: PostprocessImageRequest, upload_dir: Path) -> dict:
