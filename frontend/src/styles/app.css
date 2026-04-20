@@ -95,7 +95,7 @@ body {
 }
 
 .postprocess-board {
-  grid-template-columns: minmax(700px, 1fr) minmax(360px, 460px);
+  grid-template-columns: minmax(0, 1fr) 420px;
 }
 
 .panel {
@@ -118,27 +118,55 @@ body {
 }
 
 .postprocess-preview {
+  width: 420px;
+  min-width: 420px;
+  max-width: 420px;
   max-height: calc(100vh - 96px);
   overflow: hidden;
+  overflow-x: hidden;
 }
 
 .postprocess-list {
   overflow-y: auto;
+  overflow-x: hidden;
   max-height: calc(100vh - 210px);
-  padding-right: 4px;
+  padding-right: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.postprocess-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .postprocess-list .set-image-box {
-  min-height: 180px;
-  max-height: 220px;
+  min-height: 200px;
+  max-height: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.postprocess-list .set-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 
 .postprocess-list .set-card-head strong {
-  max-width: 240px;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: inline-block;
+}
+
+.postprocess-list .tip {
+  word-break: break-all;
 }
 
 h1,
@@ -427,6 +455,12 @@ textarea {
   .postprocess-list {
     max-height: none;
     overflow: visible;
+  }
+
+  .postprocess-preview {
+    width: auto;
+    min-width: 0;
+    max-width: none;
   }
 
   .preview-box,
