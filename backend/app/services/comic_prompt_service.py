@@ -11,7 +11,10 @@ from ..poster_config import STYLE_MAP
 
 class ComicPromptService:
     PROMPT_MODEL = "qwen3.6-plus"
+    DIALOGUE_POLISH_MODEL = "qwen3.6-plus"
     FALLBACK_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    MAX_DIALOGUE_CHARS = 20
+    MAX_RETRIES = 1
 
     @staticmethod
     def _normalize_base_url(base_url: str) -> str:
@@ -50,7 +53,7 @@ class ComicPromptService:
                 if isinstance(content, str):
                     return content
                 if isinstance(content, list):
-                    parts: list[str] = []
+                    parts = []
                     for item in content:
                         if not isinstance(item, dict):
                             continue
@@ -87,24 +90,140 @@ class ComicPromptService:
                 return None
 
     @staticmethod
-    def _dialogue_rule(language: str, text_mode: str) -> str:
-        if text_mode == "post_render":
-            return "画面中不要渲染任何可读文字，只保留空白对话气泡区域。"
-        if language == "zh-CN":
-            return "对话气泡文字必须为简体中文，禁止出现英文。"
-        return "All speech bubble text must be in English."
+    def _compact_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    @staticmethod
+    def _normalize_dialogue(value: str, max_chars: int) -> str:
+        normalized = ComicPromptService._compact_text(value).strip("\"'“”‘’")
+        if len(normalized) > max_chars:
+            normalized = normalized[:max_chars].rstrip()
+        return normalized
 
     @staticmethod
     def _language_text(language: str) -> str:
-        return "简体中文" if language == "zh-CN" else "English"
+        return "Simplified Chinese" if language == "zh-CN" else "English"
 
     @staticmethod
-    def _normalize_panel_items(data: dict, panel_count: int) -> list[dict]:
+    def _build_system_prompt() -> str:
+        return (
+            "You are an advertising comic storyboard generator.\n"
+            "Return strict JSON only. Never output markdown.\n"
+            "Every panel must use this schema:\n"
+            "{"
+            '"index": 1, '
+            '"visual_prompt": "string", '
+            '"dialogue": "string", '
+            '"emotion": "string", '
+            '"product_focus": "string"'
+            "}.\n"
+            "Rules:\n"
+            "1) dialogue must sound like a human speaking in a comic scene.\n"
+            "2) dialogue must mention or imply the product selling point.\n"
+            "3) dialogue must strongly match the visual action.\n"
+            "4) dialogue max 20 characters.\n"
+            "5) visual_prompt must be drawable: include character, action, and scene.\n"
+            "6) Keep style continuity across panels."
+        )
+
+    @staticmethod
+    def _build_user_prompt(
+        *,
+        panel_count: int,
+        product_name: str,
+        product_description: str,
+        character_hint: str,
+        style_desc: str,
+        language_text: str,
+        ratio_label: str,
+        ratio_size: str,
+        storyboard_json: str,
+    ) -> str:
+        characters = character_hint.strip() if character_hint.strip() else "1-2 recurring characters"
+        product_desc = product_description.strip() if product_description.strip() else "No extra product description."
+        return f"""
+Generate {panel_count} comic panels in strict JSON:
+{{
+  "panels": [
+    {{
+      "index": 1,
+      "visual_prompt": "string",
+      "dialogue": "string",
+      "emotion": "string",
+      "product_focus": "string"
+    }}
+  ]
+}}
+
+Language: {language_text}
+Product: {product_name}
+Product description: {product_desc}
+Character setup: {characters}
+Style: {style_desc}
+Aspect ratio: {ratio_label} ({ratio_size})
+
+Storyboard beats:
+{storyboard_json}
+
+Hard constraints:
+- Return JSON only.
+- No extra keys.
+- dialogue must be <= 20 characters.
+- dialogue must be natural spoken words, not manual/instruction style.
+""".strip()
+
+    @staticmethod
+    async def _post_chat_completion(
+        *,
+        endpoint: str,
+        api_key: str,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+    ) -> Optional[dict]:
+        request_json = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(endpoint, headers=headers, json=request_json)
+        except httpx.HTTPError:
+            return None
+
+        if response.status_code >= 400:
+            return None
+
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _normalize_panel_items(
+        data: dict,
+        *,
+        panel_count: int,
+        product_name: str,
+    ) -> tuple[list[dict], bool]:
         panels = data.get("panels")
         if not isinstance(panels, list):
-            return []
+            return [], False
 
         normalized: list[dict] = []
+        seen_indexes: set[int] = set()
+        all_dialogue_present = True
+
         for i, raw in enumerate(panels, start=1):
             if not isinstance(raw, dict):
                 continue
@@ -113,24 +232,117 @@ class ComicPromptService:
                 index = int(index_raw)
             except (TypeError, ValueError):
                 index = i
-            if index < 1 or index > panel_count:
+
+            if index < 1 or index > panel_count or index in seen_indexes:
+                continue
+            seen_indexes.add(index)
+
+            visual_prompt = ComicPromptService._compact_text(str(raw.get("visual_prompt", "")))
+            dialogue = ComicPromptService._normalize_dialogue(
+                str(raw.get("dialogue", "")),
+                ComicPromptService.MAX_DIALOGUE_CHARS,
+            )
+            emotion = ComicPromptService._compact_text(str(raw.get("emotion", "")))
+            product_focus = ComicPromptService._compact_text(str(raw.get("product_focus", "")))
+
+            if not dialogue:
+                all_dialogue_present = False
+
+            if not visual_prompt:
                 continue
 
-            panel = {
-                "index": index,
-                "scene": str(raw.get("scene", "")).strip(),
-                "camera": str(raw.get("camera", "")).strip(),
-                "action": str(raw.get("action", "")).strip(),
-                "emotion": str(raw.get("emotion", "")).strip(),
-                "dialogue": str(raw.get("dialogue", "")).strip(),
-                "continuity_note": str(raw.get("continuity_note", "")).strip(),
-                "prompt": str(raw.get("prompt", "")).strip(),
-            }
-            if panel["prompt"]:
-                normalized.append(panel)
+            normalized.append(
+                {
+                    "index": index,
+                    "visual_prompt": visual_prompt,
+                    "dialogue": dialogue,
+                    "emotion": emotion or "focused",
+                    "product_focus": product_focus or product_name,
+                }
+            )
 
         normalized.sort(key=lambda x: x["index"])
-        return normalized
+        return normalized, all_dialogue_present
+
+    @staticmethod
+    async def _polish_dialogue(
+        *,
+        endpoint: str,
+        api_key: str,
+        language: str,
+        dialogue: str,
+        emotion: str,
+        product_focus: str,
+    ) -> str:
+        language_text = ComicPromptService._language_text(language)
+        system_prompt = (
+            "You are a dialogue polisher for comic ads.\n"
+            "Return strict JSON only: {\"dialogue\":\"string\"}\n"
+            "Keep meaning unchanged, but make it more spoken and emotional.\n"
+            "Must remain <= 20 characters."
+        )
+        user_prompt = (
+            f"Language: {language_text}\n"
+            f"Original dialogue: {dialogue}\n"
+            f"Emotion: {emotion}\n"
+            f"Product focus: {product_focus}\n"
+            'Return only {"dialogue":"..."}'
+        )
+        payload = await ComicPromptService._post_chat_completion(
+            endpoint=endpoint,
+            api_key=api_key,
+            model=ComicPromptService.DIALOGUE_POLISH_MODEL,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.4,
+        )
+        if not payload:
+            return dialogue
+
+        content = ComicPromptService._extract_text_content(payload)
+        if not content:
+            return dialogue
+
+        data = ComicPromptService._load_json_object(content)
+        if not data:
+            return dialogue
+
+        polished = ComicPromptService._normalize_dialogue(
+            str(data.get("dialogue", "")),
+            ComicPromptService.MAX_DIALOGUE_CHARS,
+        )
+        return polished or dialogue
+
+    @staticmethod
+    async def _maybe_polish_dialogues(
+        *,
+        endpoint: str,
+        api_key: str,
+        language: str,
+        text_mode: str,
+        panels: list[dict],
+    ) -> list[dict]:
+        if text_mode != "model_text":
+            return panels
+
+        polished: list[dict] = []
+        for panel in panels:
+            dialogue = panel.get("dialogue", "")
+            if not dialogue:
+                polished.append(panel)
+                continue
+            new_dialogue = await ComicPromptService._polish_dialogue(
+                endpoint=endpoint,
+                api_key=api_key,
+                language=language,
+                dialogue=dialogue,
+                emotion=str(panel.get("emotion", "")),
+                product_focus=str(panel.get("product_focus", "")),
+            )
+            next_panel = dict(panel)
+            next_panel["dialogue"] = new_dialogue
+            polished.append(next_panel)
+        return polished
 
     @staticmethod
     async def generate_panel_prompts(
@@ -150,98 +362,59 @@ class ComicPromptService:
     ) -> list[dict]:
         normalized_base_url = ComicPromptService._normalize_base_url(base_url)
         endpoint = f"{normalized_base_url}/chat/completions"
-
         style_desc = STYLE_MAP.get(style, {}).get("prompt_description", style)
         storyboard_json = json.dumps(list(storyboard), ensure_ascii=False)
         language_text = ComicPromptService._language_text(language)
-        dialogue_rule = ComicPromptService._dialogue_rule(language=language, text_mode=text_mode)
-        characters = character_hint.strip() if character_hint.strip() else "1-2位角色（人物或拟人均可）"
-        product_desc = product_description.strip() if product_description.strip() else "未提供补充描述"
+        system_prompt = ComicPromptService._build_system_prompt()
+        user_prompt = ComicPromptService._build_user_prompt(
+            panel_count=panel_count,
+            product_name=product_name,
+            product_description=product_description,
+            character_hint=character_hint,
+            style_desc=style_desc,
+            language_text=language_text,
+            ratio_label=ratio_label,
+            ratio_size=ratio_size,
+            storyboard_json=storyboard_json,
+        )
 
-        system_prompt = """
-你是“电商漫画分镜编剧 + 图像提示词工程师”。
-请根据输入生成逐格漫画图像提示词，要求故事连贯、每格推进明显。
+        attempts = ComicPromptService.MAX_RETRIES + 1
+        for _ in range(attempts):
+            payload = await ComicPromptService._post_chat_completion(
+                endpoint=endpoint,
+                api_key=api_key,
+                model=ComicPromptService.PROMPT_MODEL,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.6,
+            )
+            if not payload:
+                continue
 
-核心要求：
-1. 角色与产品必须在全篇保持一致（外观、服装、道具、产品结构）。
-2. 每一格都要有新的叙事信息，禁止重复同姿势、同机位、同构图。
-3. 若有上一格参考图，它只能用于一致性校准，绝不能复刻上一格布局、动作和噪点纹理。
-4. 输出用于图像模型，描述要具体可执行，避免空泛词。
-5. 必须返回严格 JSON，不要返回 Markdown、解释性文字或代码块。
-6. `dialogue` 必须由你结合当前分镜的 action/emotion 现场原创，不得照抄草案中的提示语。
+            content = ComicPromptService._extract_text_content(payload)
+            if not content:
+                continue
 
-输出 JSON 格式：
-{
-  "panels": [
-    {
-      "index": 1,
-      "scene": "本格主题",
-      "camera": "镜头语言",
-      "action": "动作描述",
-      "emotion": "情绪描述",
-      "dialogue": "本格对白",
-      "continuity_note": "与上一格衔接说明",
-      "prompt": "给图像模型的最终提示词"
-    }
-  ]
-}
-""".strip()
+            data = ComicPromptService._load_json_object(content)
+            if not data:
+                continue
 
-        user_prompt = f"""
-请生成 {panel_count} 格漫画提示词。
+            panels, all_dialogue_present = ComicPromptService._normalize_panel_items(
+                data=data,
+                panel_count=panel_count,
+                product_name=product_name,
+            )
+            if not panels:
+                continue
+            if not all_dialogue_present:
+                continue
 
-【语言】{language_text}
-【文字策略】{dialogue_rule}
-【产品】{product_name}
-【产品描述】{product_desc}
-【角色设定】{characters}
-【风格】{style_desc}
-【比例】{ratio_label}（{ratio_size}）
+            return await ComicPromptService._maybe_polish_dialogues(
+                endpoint=endpoint,
+                api_key=api_key,
+                language=language,
+                text_mode=text_mode,
+                panels=panels,
+            )
 
-【分镜草案（必须遵循并强化故事推进）】
-{storyboard_json}
-
-请确保每个 panel 的 `prompt` 中都明确体现：
-- 这是第 index/{panel_count} 格；
-- 与上一格相比必须有构图或动作推进；
-- 如果提供上一格参考图，仅作一致性参考，禁止复刻画面和噪点。
-- 每格 `dialogue` 都要原创，语气贴合该格情绪，不得使用固定模板句。
-- 若草案中出现 `dialogue_hint`，仅作方向参考，不能原样复述。
-""".strip()
-
-        request_json = {
-            "model": ComicPromptService.PROMPT_MODEL,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.7,
-        }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(endpoint, headers=headers, json=request_json)
-        except httpx.HTTPError:
-            return []
-
-        if response.status_code >= 400:
-            return []
-
-        try:
-            payload = response.json()
-        except ValueError:
-            return []
-
-        content = ComicPromptService._extract_text_content(payload)
-        if not content:
-            return []
-
-        data = ComicPromptService._load_json_object(content)
-        if not data:
-            return []
-
-        return ComicPromptService._normalize_panel_items(data=data, panel_count=panel_count)
+        return []

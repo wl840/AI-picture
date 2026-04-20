@@ -84,6 +84,49 @@ def _dialogue_rule(language: str, text_mode: str) -> str:
     return "All speech bubble text must be in English."
 
 
+def _fallback_dialogue(language: str) -> str:
+    return "这就搞定" if language == "zh-CN" else "Done, this works."
+
+
+def _normalize_dialogue(dialogue: str, max_chars: int = 20) -> str:
+    value = " ".join((dialogue or "").split()).strip().strip("\"'“”‘’")
+    if len(value) > max_chars:
+        return value[:max_chars].rstrip()
+    return value
+
+
+def _compose_generation_prompt(
+    *,
+    visual_prompt: str,
+    dialogue: str,
+    emotion: str,
+    product_focus: str,
+    text_mode: str,
+) -> str:
+    visual = visual_prompt.strip()
+    if not visual:
+        return ""
+
+    spoken = _normalize_dialogue(dialogue)
+    emotion_text = (emotion or "focused").strip()
+    focus_text = (product_focus or "").strip()
+
+    if text_mode == "post_render":
+        bubble_text = "speech bubble area left blank (no readable text)"
+    else:
+        bubble_line = spoken or "Ready."
+        bubble_text = f'speech bubble with text \"{bubble_line}\"'
+
+    parts = [
+        visual,
+        "comic style",
+        bubble_text,
+        f"emotion: {emotion_text}",
+        f"highlight product: {focus_text}" if focus_text else "highlight product",
+    ]
+    return ", ".join(parts)
+
+
 def _apply_reference_only_guard(
     *,
     prompt: str,
@@ -224,19 +267,24 @@ class ComicService:
         for beat in storyboard:
             panel_index = beat["index"]
             llm_panel = llm_panel_map.get(panel_index, {})
-            scene = llm_panel.get("scene") or beat["scene"]
-            camera = llm_panel.get("camera") or beat["camera"]
-            action = llm_panel.get("action") or beat["action"]
-            emotion = llm_panel.get("emotion") or beat["emotion"]
-            dialogue = (llm_panel.get("dialogue") or beat.get("dialogue_hint", "")).strip()
-            continuity_note = llm_panel.get("continuity_note") or beat["continuity_note"]
+            scene = beat["scene"]
+            camera = beat["camera"]
+            action = beat["action"]
+            emotion = (llm_panel.get("emotion") or beat["emotion"]).strip()
+            dialogue = _normalize_dialogue(llm_panel.get("dialogue") or "")
+            if not dialogue:
+                dialogue = _fallback_dialogue(language)
+            product_focus = (llm_panel.get("product_focus") or req.product_name).strip()
+            visual_prompt = (llm_panel.get("visual_prompt") or "").strip()
+            continuity_note = beat["continuity_note"]
+            scene_description = visual_prompt or f"{scene}; {camera}; {action}"
 
             fallback_prompt = build_comic_panel_prompt(
                 panel_index=panel_index,
                 panel_count=req.panel_count,
                 product_name=req.product_name,
                 product_description=product_description,
-                scene_description=scene,
+                scene_description=scene_description,
                 style=req.style,
                 character_hint=character_hint,
                 camera=camera,
@@ -249,7 +297,14 @@ class ComicService:
                 ratio_label=ratio["label"],
                 ratio_size=ratio["size"],
             )
-            prompt = llm_panel.get("prompt") or fallback_prompt
+            structured_prompt = _compose_generation_prompt(
+                visual_prompt=visual_prompt,
+                dialogue=dialogue,
+                emotion=emotion,
+                product_focus=product_focus,
+                text_mode=text_mode,
+            )
+            prompt = structured_prompt or fallback_prompt
             prompt = _apply_reference_only_guard(
                 prompt=prompt,
                 panel_index=panel_index,
