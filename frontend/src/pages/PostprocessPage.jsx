@@ -7,6 +7,7 @@ import {
   toAbsoluteUrl,
   uploadLogo,
 } from "../api";
+import ImageLightbox from "../components/ImageLightbox";
 
 const DEFAULT_IMAGE_BASE_URL =
   import.meta.env.VITE_IMAGE_BASE_URL ||
@@ -38,6 +39,7 @@ function PostprocessPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [deletingKey, setDeletingKey] = useState("");
+  const [lightbox, setLightbox] = useState({ open: false, src: "", alt: "" });
 
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
 
@@ -91,6 +93,15 @@ function PostprocessPage() {
 
   const clearSelection = () => {
     setSelectedPaths([]);
+  };
+
+  const openLightbox = (src, alt) => {
+    if (!src) return;
+    setLightbox({ open: true, src, alt: alt || "" });
+  };
+
+  const closeLightbox = () => {
+    setLightbox({ open: false, src: "", alt: "" });
   };
 
   const onDeleteImage = async (item) => {
@@ -350,7 +361,12 @@ function PostprocessPage() {
                   </div>
 
                   <div className="set-image-box">
-                    <img src={toAbsoluteUrl(item.path)} alt={item.filename} className="set-image" />
+                    <img
+                      src={toAbsoluteUrl(item.path)}
+                      alt={item.filename}
+                      className="set-image zoomable-image"
+                      onClick={() => openLightbox(toAbsoluteUrl(item.path), item.filename)}
+                    />
                   </div>
                   <small className="tip">{item.path}</small>
                 </div>
@@ -359,6 +375,7 @@ function PostprocessPage() {
           </div>
         </aside>
       </main>
+      <ImageLightbox open={lightbox.open} src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
     </div>
   );
 }

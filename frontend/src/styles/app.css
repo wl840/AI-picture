@@ -398,6 +398,10 @@ textarea {
   display: block;
 }
 
+.zoomable-image {
+  cursor: zoom-in;
+}
+
 .preview-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -598,6 +602,39 @@ textarea {
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: lightboxFadeIn 0.16s ease-out;
+}
+
+.lightbox-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  cursor: zoom-out;
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes lightboxFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .set-empty {

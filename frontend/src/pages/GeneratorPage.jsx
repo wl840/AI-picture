@@ -9,6 +9,7 @@ import {
   uploadLogo,
   uploadProductImage,
 } from "../api";
+import ImageLightbox from "../components/ImageLightbox";
 
 const DEFAULT_IMAGE_MODEL = "qwen-image-2.0-pro";
 const DEFAULT_COMIC_MODEL = "wan2.7-image";
@@ -47,6 +48,7 @@ function GeneratorPage() {
   const [comicLoading, setComicLoading] = useState(false);
   const [panelCount, setPanelCount] = useState(4);
   const [error, setError] = useState("");
+  const [lightbox, setLightbox] = useState({ open: false, src: "", alt: "" });
 
   useEffect(() => {
     async function loadOptions() {
@@ -300,6 +302,15 @@ function GeneratorPage() {
     link.click();
   };
 
+  const openLightbox = (src, alt) => {
+    if (!src) return;
+    setLightbox({ open: true, src, alt: alt || "" });
+  };
+
+  const closeLightbox = () => {
+    setLightbox({ open: false, src: "", alt: "" });
+  };
+
   return (
     <div className="page-wrap">
       <div className="glow glow-left" />
@@ -489,7 +500,12 @@ function GeneratorPage() {
           <h2>海报预览</h2>
           <div className="preview-box">
             {resultImage ? (
-              <img src={resultImage} alt="生成海报" className="poster-image" />
+              <img
+                src={resultImage}
+                alt="生成海报"
+                className="poster-image zoomable-image"
+                onClick={() => openLightbox(resultImage, "生成海报")}
+              />
             ) : (
               <div className="empty-box">
                 <p>生成后预览</p>
@@ -530,7 +546,12 @@ function GeneratorPage() {
 
                   <div className="set-image-box">
                     {item.image ? (
-                      <img src={item.image} alt={item.name} className="set-image" />
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="set-image zoomable-image"
+                        onClick={() => openLightbox(item.image, item.name)}
+                      />
                     ) : (
                       <div className="set-empty">{item.error ? "生成失败" : "等待生成"}</div>
                     )}
@@ -594,7 +615,12 @@ function GeneratorPage() {
                       </div>
                       <div className="set-image-box">
                         {imgSrc ? (
-                          <img src={imgSrc} alt={`第${panel.index}格`} className="set-image" />
+                          <img
+                            src={imgSrc}
+                            alt={`第${panel.index}格`}
+                            className="set-image zoomable-image"
+                            onClick={() => openLightbox(imgSrc, `第${panel.index}格`)}
+                          />
                         ) : (
                           <div className="set-empty">{panel.error || "等待生成"}</div>
                         )}
@@ -612,7 +638,8 @@ function GeneratorPage() {
                   <img
                     src={toAbsoluteUrl(comicResult.composite_path)}
                     alt="漫画完整条"
-                    className="poster-image"
+                    className="poster-image zoomable-image"
+                    onClick={() => openLightbox(toAbsoluteUrl(comicResult.composite_path), "漫画完整条")}
                   />
                   <button
                     type="button"
@@ -626,6 +653,7 @@ function GeneratorPage() {
           )}
         </aside>
       </main>
+      <ImageLightbox open={lightbox.open} src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
     </div>
   );
 }
