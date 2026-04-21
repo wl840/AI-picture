@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import mimetypes
 import uuid
 from pathlib import Path
@@ -40,6 +41,11 @@ class PostprocessService:
         "bottom_right": "右下角",
     }
 
+    _DATA_URI_MAX_BYTES = 10 * 1024 * 1024
+    _DATA_URI_SAFE_BYTES = int(_DATA_URI_MAX_BYTES * 0.92)
+    _JPEG_QUALITIES = (90, 82, 74, 66, 58, 50, 42)
+    _RESIZE_FACTORS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4)
+
     @staticmethod
     def _resolve_logo_file(upload_dir: Path, logo_id: str) -> Path:
         matches = list(upload_dir.glob(f"{logo_id}.*"))
@@ -67,6 +73,90 @@ class PostprocessService:
         mime = mime or "image/png"
         payload = base64.b64encode(path.read_bytes()).decode("utf-8")
         return f"data:{mime};base64,{payload}"
+
+    @staticmethod
+    def _data_url_size(value: str) -> int:
+        return len(value.encode("utf-8"))
+
+    @staticmethod
+    def _build_data_url(raw: bytes, mime: str) -> str:
+        payload = base64.b64encode(raw).decode("utf-8")
+        return f"data:{mime};base64,{payload}"
+
+    @staticmethod
+    def _path_to_data_url_limited(path: Path) -> str:
+        raw_data_url = PostprocessService._path_to_data_url(path)
+        if PostprocessService._data_url_size(raw_data_url) <= PostprocessService._DATA_URI_SAFE_BYTES:
+            return raw_data_url
+
+        image = Image.open(path)
+        try:
+            use_png = "A" in image.getbands()
+            working = image.convert("RGBA" if use_png else "RGB")
+            base_w, base_h = working.size
+
+            best_data_url = raw_data_url
+            best_size = PostprocessService._data_url_size(raw_data_url)
+
+            for factor in PostprocessService._RESIZE_FACTORS:
+                if factor == 1.0:
+                    candidate = working
+                else:
+                    target_w = max(1, int(base_w * factor))
+                    target_h = max(1, int(base_h * factor))
+                    candidate = working.resize((target_w, target_h), Image.LANCZOS)
+
+                try:
+                    if use_png:
+                        buf = io.BytesIO()
+                        candidate.save(buf, format="PNG", optimize=True)
+                        data_url = PostprocessService._build_data_url(buf.getvalue(), "image/png")
+                        size = PostprocessService._data_url_size(data_url)
+                        if size < best_size:
+                            best_data_url = data_url
+                            best_size = size
+                        if size <= PostprocessService._DATA_URI_SAFE_BYTES:
+                            return data_url
+                    else:
+                        for quality in PostprocessService._JPEG_QUALITIES:
+                            buf = io.BytesIO()
+                            candidate.save(
+                                buf,
+                                format="JPEG",
+                                optimize=True,
+                                quality=quality,
+                                progressive=True,
+                            )
+                            data_url = PostprocessService._build_data_url(buf.getvalue(), "image/jpeg")
+                            size = PostprocessService._data_url_size(data_url)
+                            if size < best_size:
+                                best_data_url = data_url
+                                best_size = size
+                            if size <= PostprocessService._DATA_URI_SAFE_BYTES:
+                                return data_url
+                finally:
+                    if candidate is not working:
+                        candidate.close()
+
+            if best_size <= PostprocessService._DATA_URI_MAX_BYTES:
+                return best_data_url
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"reference image too large after compression: {path.name}, "
+                    f"data_uri_bytes={best_size}, limit={PostprocessService._DATA_URI_MAX_BYTES}"
+                ),
+            )
+        finally:
+            image.close()
+
+    @staticmethod
+    def _is_data_uri_too_large_error(exc: HTTPException) -> bool:
+        detail = str(exc.detail)
+        return exc.status_code == 400 and (
+            "BadRequest.TooLarge" in detail
+            or "Exceeded limit on max bytes per data-uri item" in detail
+        )
 
     @staticmethod
     async def _download_remote_image(image_url: str) -> Path:
@@ -250,15 +340,33 @@ class PostprocessService:
                 f"请将 logo 固定放在{position_zh}，与画面边缘保持小间距，只出现一个 logo，不要放在其他位置。"
             )
 
-        generated = await ImageProviderService.generate_image(
-            api_key=req.api_key or "",
-            base_url=req.base_url,
-            model=req.model,
-            prompt=prompt,
-            ratio_key=req.ai_ratio_key,
-            logo_base64_data_url=None,
-            reference_images_data_urls=references,
-        )
+        try:
+            generated = await ImageProviderService.generate_image(
+                api_key=req.api_key or "",
+                base_url=req.base_url,
+                model=req.model,
+                prompt=prompt,
+                ratio_key=req.ai_ratio_key,
+                logo_base64_data_url=None,
+                reference_images_data_urls=references,
+            )
+        except HTTPException as exc:
+            if not PostprocessService._is_data_uri_too_large_error(exc):
+                raise
+
+            compressed_refs = [PostprocessService._path_to_data_url_limited(source_path)]
+            if logo_file:
+                compressed_refs.append(PostprocessService._path_to_data_url_limited(logo_file))
+
+            generated = await ImageProviderService.generate_image(
+                api_key=req.api_key or "",
+                base_url=req.base_url,
+                model=req.model,
+                prompt=prompt,
+                ratio_key=req.ai_ratio_key,
+                logo_base64_data_url=None,
+                reference_images_data_urls=compressed_refs,
+            )
         local_path = await PostprocessService._ensure_local_image_path(generated)
         return f"/static/generated/{local_path.name}"
 
