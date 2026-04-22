@@ -11,10 +11,13 @@ import {
 } from "../api";
 import ImageLightbox from "../components/ImageLightbox";
 
-const DEFAULT_IMAGE_MODEL = "qwen-image-2.0-pro";
-const DEFAULT_COMIC_MODEL = "wan2.7-image";
+const DEFAULT_IMAGE_MODEL = "wan2.7-image-pro";
+const DEFAULT_COMIC_MODEL = "wan2.7-image-pro";
 const DEFAULT_IMAGE_BASE_URL =
-  import.meta.env.VITE_IMAGE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  import.meta.env.VITE_IMAGE_BASE_URL || "https://dashscope.aliyuncs.com/api/v1";
+const DEFAULT_TEXT_MODEL = import.meta.env.VITE_TEXT_MODEL || "gpt-5.4";
+const DEFAULT_TEXT_BASE_URL =
+  import.meta.env.VITE_TEXT_BASE_URL || "https://api.psydo.top/v1";
 const COMIC_COMPOSITE_RATIO_OPTIONS = [
   { key: "mobile", label: "9:16 竖版长图" },
   { key: "landscape", label: "16:9 横版长图" },
@@ -241,6 +244,9 @@ function GeneratorPage() {
         api_key: form.apiKey.trim(),
         base_url: DEFAULT_IMAGE_BASE_URL,
         model: DEFAULT_COMIC_MODEL,
+        text_api_key: import.meta.env.VITE_TEXT_API_KEY || form.apiKey.trim(),
+        text_base_url: DEFAULT_TEXT_BASE_URL,
+        text_model: DEFAULT_TEXT_MODEL,
         product_name: form.productName.trim(),
         product_image_id: productImageInfo?.product_image_id || null,
         style: form.style,

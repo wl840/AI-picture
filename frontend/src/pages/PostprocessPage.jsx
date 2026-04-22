@@ -11,7 +11,7 @@ import ImageLightbox from "../components/ImageLightbox";
 
 const DEFAULT_IMAGE_BASE_URL =
   import.meta.env.VITE_IMAGE_BASE_URL ||
-  "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+  "https://dashscope.aliyuncs.com/api/v1";
 
 const initialForm = {
   processMode: "local",
@@ -22,7 +22,7 @@ const initialForm = {
   textContent: "",
   textPosition: "top_left",
   apiKey: import.meta.env.VITE_DEFAULT_API_KEY || "",
-  model: "qwen-image-edit-max",
+  model: "wan2.7-image-pro",
   baseUrl: DEFAULT_IMAGE_BASE_URL,
   aiPrompt:
     "在保持原图主体构图与风格的前提下，融合参考logo到画面中，保证清晰、自然，不遮挡主体，不要水印和乱码。",
@@ -277,7 +277,7 @@ function PostprocessPage() {
 
                 <input
                   type="text"
-                  placeholder="模型名（如 qwen-image-edit-max）"
+                  placeholder="模型名（如 wan2.7-image-pro）"
                   value={form.model}
                   onChange={(e) => updateField("model", e.target.value)}
                 />

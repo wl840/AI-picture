@@ -387,8 +387,9 @@ class ComicService:
             product_description=product_description,
         )
         llm_panels = await ComicPromptService.generate_panel_prompts(
-            api_key=req.api_key,
-            base_url=req.base_url,
+            api_key=req.text_api_key or req.api_key,
+            base_url=req.text_base_url,
+            model=req.text_model,
             panel_count=req.panel_count,
             product_name=req.product_name,
             product_description=product_description,

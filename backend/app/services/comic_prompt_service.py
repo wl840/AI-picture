@@ -10,9 +10,9 @@ from ..poster_config import STYLE_MAP
 
 
 class ComicPromptService:
-    PROMPT_MODEL = "qwen3.6-plus"
-    DIALOGUE_POLISH_MODEL = "qwen3.6-plus"
-    FALLBACK_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    PROMPT_MODEL = "gpt-5.4"
+    DIALOGUE_POLISH_MODEL = "gpt-5.4"
+    FALLBACK_BASE_URL = "https://api.psydo.top/v1"
     MAX_DIALOGUE_CHARS = 20
     MAX_RETRIES = 1
 
@@ -269,6 +269,7 @@ Hard constraints:
         *,
         endpoint: str,
         api_key: str,
+        model: str,
         language: str,
         dialogue: str,
         emotion: str,
@@ -291,7 +292,7 @@ Hard constraints:
         payload = await ComicPromptService._post_chat_completion(
             endpoint=endpoint,
             api_key=api_key,
-            model=ComicPromptService.DIALOGUE_POLISH_MODEL,
+            model=model or ComicPromptService.DIALOGUE_POLISH_MODEL,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.4,
@@ -318,6 +319,7 @@ Hard constraints:
         *,
         endpoint: str,
         api_key: str,
+        model: str,
         language: str,
         text_mode: str,
         panels: list[dict],
@@ -334,6 +336,7 @@ Hard constraints:
             new_dialogue = await ComicPromptService._polish_dialogue(
                 endpoint=endpoint,
                 api_key=api_key,
+                model=model,
                 language=language,
                 dialogue=dialogue,
                 emotion=str(panel.get("emotion", "")),
@@ -349,6 +352,7 @@ Hard constraints:
         *,
         api_key: str,
         base_url: str,
+        model: str,
         panel_count: int,
         product_name: str,
         product_description: str,
@@ -383,7 +387,7 @@ Hard constraints:
             payload = await ComicPromptService._post_chat_completion(
                 endpoint=endpoint,
                 api_key=api_key,
-                model=ComicPromptService.PROMPT_MODEL,
+                model=model or ComicPromptService.PROMPT_MODEL,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.6,
@@ -412,6 +416,7 @@ Hard constraints:
             return await ComicPromptService._maybe_polish_dialogues(
                 endpoint=endpoint,
                 api_key=api_key,
+                model=model,
                 language=language,
                 text_mode=text_mode,
                 panels=panels,

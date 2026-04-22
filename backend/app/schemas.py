@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class GeneratePosterRequest(BaseModel):
     api_key: str = Field(..., min_length=10, description="DashScope/OpenAI-compatible API key")
-    model: str = Field(default="qwen-image-2.0-pro")
-    base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    model: str = Field(default="wan2.7-image-pro")
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1")
     template_key: str = Field(default="festival_promo")
     style: str = Field(default="american_comic")
     ratio_key: str = Field(default="square")
@@ -68,8 +68,8 @@ class PostprocessImageRequest(BaseModel):
     text_color: str = Field(default="#FFFFFF", min_length=4, max_length=9)
 
     api_key: Optional[str] = Field(default=None, min_length=10, description="Required when process_mode=ai")
-    model: str = Field(default="qwen-image-edit-max")
-    base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+    model: str = Field(default="wan2.7-image-pro")
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1")
     ai_prompt: str = Field(
         default="在保持原图主体构图与风格的前提下，融合参考logo到画面中，保证清晰、自然、不遮挡主体，不要水印和乱码。",
         max_length=1000,
@@ -193,8 +193,8 @@ class UploadProductImageResponse(BaseModel):
 
 class GenerateProductSetRequest(BaseModel):
     api_key: str = Field(..., min_length=10, description="DashScope/OpenAI-compatible API key")
-    model: str = Field(default="qwen-image-2.0-pro")
-    base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    model: str = Field(default="wan2.7-image-pro")
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1")
     product_image_id: str = Field(..., min_length=8)
     product_name: str = Field(..., min_length=2, max_length=80)
     style: str = Field(default="american_comic")
@@ -227,8 +227,11 @@ class GenerateProductSetResponse(BaseModel):
 
 class GenerateComicRequest(BaseModel):
     api_key: str = Field(..., min_length=10, description="DashScope/OpenAI-compatible API key")
-    model: str = Field(default="wan2.7-image")
-    base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    model: str = Field(default="wan2.7-image-pro")
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1")
+    text_api_key: Optional[str] = Field(default=None, min_length=10)
+    text_model: str = Field(default="gpt-5.4")
+    text_base_url: str = Field(default="https://api.psydo.top/v1")
     product_name: str = Field(..., min_length=2, max_length=80)
     product_image_id: Optional[str] = Field(default=None, min_length=8)
     style: str = Field(default="american_comic")
@@ -243,6 +246,11 @@ class GenerateComicRequest(BaseModel):
     @field_validator("base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
+        return value.rstrip("/")
+
+    @field_validator("text_base_url")
+    @classmethod
+    def normalize_text_base_url(cls, value: str) -> str:
         return value.rstrip("/")
 
     @model_validator(mode="after")
