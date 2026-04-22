@@ -28,7 +28,7 @@ TEMPLATES: List[Dict] = [
         "key": "business_clean",
         "name": "商务简约",
         "variants": 4,
-        "description": "企业宣传、发布会、官网风物料",
+        "description": "企业宣传、发布会、官网风格物料",
         "tone": "克制、简洁、可信赖",
     },
     {
@@ -43,60 +43,60 @@ TEMPLATES: List[Dict] = [
         "name": "品牌宣传",
         "variants": 6,
         "description": "品牌理念、故事和价值传达",
-        "tone": "高级、叙事、情感链接",
+        "tone": "高级、叙事、情感连接",
     },
 ]
 
 STYLES = [
     {
-        "key": "american_comic",
+        "key": "american_impasto",
         "name": "美漫厚涂风",
-        "prompt_description": "美式超级英雄漫画风格，粗犷的墨线轮廓，厚重的不透明颜料平涂，对比强烈的深色阴影，鲜艳的原色系配色，充满力量感的动感构图，漫威/DC漫画质感",
+        "prompt_description": "american comic impasto painting style, thick paint buildup, visible aggressive brush strokes, dramatic chiaroscuro, strong saturated primaries with deep shadow blocks, dynamic heroic perspective, bold contour emphasis, high-impact action poster energy, texture-rich finish; avoid watercolor softness and minimalist flat layout",
     },
     {
-        "key": "ghibli",
-        "name": "吉卜力风格",
-        "prompt_description": "宫崎骏吉卜力手绘动画风格，柔和的水彩质感，细腻丰富的背景细节，温暖的马卡龙配色，圆润可爱的角色造型，充满梦幻田园气息",
+        "key": "paper_cut_3d",
+        "name": "立体纸雕风",
+        "prompt_description": "3d papercraft diorama style, layered paper sheets and cutout geometry, clean contour edges, step-like depth separation, handcrafted matte paper texture, soft cast shadows between layers, structured composition with sculptural rhythm, poetic storybook atmosphere inspired by The Little Prince; avoid glossy plastic reflections and painterly brush texture",
     },
     {
-        "key": "cel_anime",
-        "name": "赛璐璐动漫风",
-        "prompt_description": "90年代日系赛璐璐动画风格，干净锐利的线条，大面积平涂色块，富有表现力的大眼睛，有限色阶的简洁阴影，少年漫画视觉语言",
+        "key": "pop_american_comic",
+        "name": "波普美漫风",
+        "prompt_description": "pop american comic style, ultra high-saturation color contrast, halftone texture accents, graphic panel-like visual rhythm, kinetic framing, punchy highlights, contemporary superhero-movie energy similar to spider-verse aesthetics, loud and youthful street attitude; avoid muted palettes and traditional ink wash mood",
     },
     {
-        "key": "cyberpunk_neon",
-        "name": "赛博朋克霓虹",
-        "prompt_description": "赛博朋克霓虹都市插画，雨后湿润的反光街道，电气感的洋红和青色霓虹灯光，密集的城市层次，金属质感，数字故障效果，银翼杀手和攻壳机动队视觉风格",
+        "key": "gongbi_rich_color",
+        "name": "工笔重彩风",
+        "prompt_description": "traditional chinese gongbi heavy-color style, ultra fine line precision, meticulous detailing, rich mineral-like pigments, ornate classical composition, elegant decorative motifs, layered luxurious color fields, refined eastern court-painting temperament, balanced grandeur and delicacy; avoid rough sketch strokes and western comic rendering",
     },
     {
-        "key": "ink_animation",
-        "name": "水墨动画风",
-        "prompt_description": "中国传统水墨动画风格，流动的水墨笔触，大量留白构图，墨色浓淡变化，偶尔点缀朱红色，诗意山水意境，写意笔法",
+        "key": "wool_felt_stop_motion",
+        "name": "羊毛毡定格",
+        "prompt_description": "wool felt stop-motion style, handmade fiber surfaces, soft fuzzy tactile texture, stitched and handmade micro-imperfections, warm miniature set lighting, cozy healing atmosphere, handcrafted puppet-like forms, gentle depth cues, artisanal storytelling charm; avoid hard metallic sheen and sharp digital vector look",
     },
     {
-        "key": "pixel_retro",
-        "name": "像素复古游戏",
-        "prompt_description": "复古16位像素游戏风格，等距或横版卷轴视角，色彩抖动阴影，限定32色调色板，可见像素格的方块化精灵图，90年代JRPG平台游戏美学",
+        "key": "extreme_bw_cinema",
+        "name": "极致黑白风格",
+        "prompt_description": "extreme black and white cinematic style, pure monochrome palette, ultra-strong tonal contrast, deep noir shadows, controlled hard highlights, premium film-grain photography feel, dramatic narrative framing, high-end editorial poster mood; strictly avoid any visible color tint or candy-style saturation",
     },
     {
-        "key": "fairy_tale",
-        "name": "欧式童话插画",
-        "prompt_description": "欧洲童话故事书插画，细密的钢笔线条配合水彩渲染，华丽的装饰边框，温暖烛光般的琥珀色调，黄金时代插画风格，精致唯美",
+        "key": "clay_stop_motion",
+        "name": "黏土定格",
+        "prompt_description": "clay stop-motion style, sculpted clay materials with finger-molded traces, retro quirky character proportions, playful and slightly eerie handcrafted mood, miniature practical set lighting, tactile matte surfaces, whimsical dark-fairy-tale charm reminiscent of coraline-like stop-motion; avoid smooth realistic skin rendering and 2d anime lineart",
     },
     {
-        "key": "steampunk",
-        "name": "蒸汽朋克机械",
-        "prompt_description": "蒸汽朋克机械插画，蚀刻铜制齿轮和管道纹理，维多利亚时代版画风格，可见铆钉细节，蒸汽光源下的强烈明暗对比，复古未来主义",
+        "key": "neo_chinese_ink",
+        "name": "新中式水墨风",
+        "prompt_description": "neo chinese ink wash style, flowing ink diffusion and wet-on-wet gradients, elegant blank-space composition, poetic xieyi atmosphere, soft mist layering, restrained accent colors over grayscale base, modern eastern minimalism fused with classical brush spirit, airy and expressive rhythm; avoid neon cyber glow and dense comic halftone texture",
     },
     {
-        "key": "flat_illustration",
-        "name": "扁平插画风",
-        "prompt_description": "现代扁平设计插画，几何简化造型，大色块对比配色，无投影无纹理，北欧简约海报美学，干净清爽的视觉语言",
+        "key": "ghibli_watercolor",
+        "name": "吉卜力风",
+        "prompt_description": "ghibli-inspired hand-painted watercolor animation style, warm natural sunlight, rich environmental storytelling, gentle wind-and-nature atmosphere, delicate emotional expression, layered scenic details, soft cinematic framing, healing pastoral tone, high-quality traditional animation background aesthetics; avoid harsh sci-fi neon contrast and heavy noir shadows",
     },
     {
-        "key": "dark_gothic",
-        "name": "暗黑哥特风",
-        "prompt_description": "暗黑哥特奇幻插画，戏剧性烛光明暗对比，深宝石色调（深红与紫罗兰），哥特教堂和乌鸦元素，细密交叉排线纹理，蒂姆伯顿视觉美学",
+        "key": "cute_3d_toon",
+        "name": "3D萌版",
+        "prompt_description": "cute 3d toon animation style, stylized adorable proportions, high-quality pbr materials, soft global illumination, smooth rounded geometry, realistic yet gentle material rendering, polished skin and fabric response, bright friendly palette, premium family-oriented cg film quality; avoid flat 2d brushstroke textures and gritty realism",
     },
 ]
 
@@ -107,3 +107,4 @@ ASPECT_RATIOS: Dict[str, Dict] = {
     "mobile": {"label": "手机竖版", "size": "1024x1792", "ratio": "9:16"},
     "landscape": {"label": "横版海报", "size": "1792x1024", "ratio": "16:9"},
 }
+

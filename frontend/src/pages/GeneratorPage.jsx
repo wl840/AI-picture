@@ -69,7 +69,7 @@ function GeneratorPage() {
         setForm((prev) => ({
           ...prev,
           templateKey: data.templates?.[0]?.key || "festival_promo",
-          style: data.styles?.[0]?.key || "american_comic",
+          style: data.styles?.[0]?.key || "american_impasto",
           ratioKey: defaultRatioKey,
           comicCompositeRatioKey: defaultCompositeRatioKey,
         }));
