@@ -72,7 +72,7 @@ class PostprocessImageRequest(BaseModel):
     base_url: str = Field(default="https://dashscope.aliyuncs.com/api/v1")
     ai_prompt: str = Field(
         default="在保持原图主体构图与风格的前提下，融合参考logo到画面中，保证清晰、自然、不遮挡主体，不要水印和乱码。",
-        max_length=1000,
+        max_length=6000,
     )
     ai_ratio_key: Literal["square", "mobile", "landscape"] = Field(default="square")
 
