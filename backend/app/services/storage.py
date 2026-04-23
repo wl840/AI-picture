@@ -36,6 +36,10 @@ class StorageService:
         return await StorageService._save_image(file, invalid_message="仅支持图片格式产品图")
 
     @staticmethod
+    async def save_qr_image(file: UploadFile) -> tuple[str, str]:
+        return await StorageService._save_image(file, invalid_message="仅支持图片格式二维码")
+
+    @staticmethod
     def file_to_data_url(filename: str) -> str | None:
         file_path = UPLOAD_DIR / filename
         if not file_path.exists():

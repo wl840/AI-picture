@@ -66,6 +66,12 @@ class PostprocessImageRequest(BaseModel):
     text_font_scale: float = Field(default=0.045, ge=0.01, le=0.2)
     text_opacity: float = Field(default=0.95, ge=0.05, le=1.0)
     text_color: str = Field(default="#FFFFFF", min_length=4, max_length=9)
+    qr_enabled: bool = Field(default=False)
+    qr_image_id: Optional[str] = Field(default=None, min_length=8)
+    qr_position: Literal["bottom_left", "bottom_right"] = Field(default="bottom_right")
+    qr_scale: float = Field(default=0.18, ge=0.08, le=0.45)
+    qr_card_opacity: float = Field(default=0.95, ge=0.2, le=1.0)
+    phone_number: str = Field(default="", max_length=40)
 
     api_key: Optional[str] = Field(default=None, min_length=10, description="Required when process_mode=ai")
     model: str = Field(default="wan2.7-image-pro")
@@ -88,7 +94,7 @@ class PostprocessImageRequest(BaseModel):
             raise ValueError("image_paths cannot be empty")
         return normalized
 
-    @field_validator("watermark_text", "text_content")
+    @field_validator("watermark_text", "text_content", "phone_number")
     @classmethod
     def normalize_text(cls, value: str) -> str:
         return value.strip()
@@ -113,13 +119,22 @@ class PostprocessImageRequest(BaseModel):
                 raise ValueError("api_key is required when process_mode=ai")
             return self
 
+        if self.qr_image_id and not self.qr_enabled:
+            self.qr_enabled = True
+        if self.qr_enabled and not self.qr_image_id:
+            raise ValueError("qr_image_id is required when qr_enabled=true")
+
         if self.logo_id:
             return self
         if self.watermark_text:
             return self
         if self.text_content:
             return self
-        raise ValueError("At least one overlay is required: logo_id or watermark_text or text_content")
+        if self.qr_enabled and self.qr_image_id:
+            return self
+        raise ValueError(
+            "At least one overlay is required: logo_id or watermark_text or text_content or qr_image_id"
+        )
 
 
 class PostprocessImageItemResponse(BaseModel):
@@ -187,6 +202,12 @@ class UploadLogoResponse(BaseModel):
 
 class UploadProductImageResponse(BaseModel):
     product_image_id: str
+    filename: str
+    url: str
+
+
+class UploadQrResponse(BaseModel):
+    qr_id: str
     filename: str
     url: str
 

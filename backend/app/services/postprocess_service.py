@@ -47,11 +47,19 @@ class PostprocessService:
     _RESIZE_FACTORS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4)
 
     @staticmethod
-    def _resolve_logo_file(upload_dir: Path, logo_id: str) -> Path:
-        matches = list(upload_dir.glob(f"{logo_id}.*"))
+    def _resolve_uploaded_file(upload_dir: Path, image_id: str, *, label: str) -> Path:
+        matches = list(upload_dir.glob(f"{image_id}.*"))
         if not matches:
-            raise HTTPException(status_code=404, detail="logo_id invalid or file missing")
+            raise HTTPException(status_code=404, detail=f"{label} invalid or file missing")
         return matches[0]
+
+    @staticmethod
+    def _resolve_logo_file(upload_dir: Path, logo_id: str) -> Path:
+        return PostprocessService._resolve_uploaded_file(upload_dir, logo_id, label="logo_id")
+
+    @staticmethod
+    def _resolve_qr_file(upload_dir: Path, qr_id: str) -> Path:
+        return PostprocessService._resolve_uploaded_file(upload_dir, qr_id, label="qr_image_id")
 
     @staticmethod
     def _resolve_source_path(source_path: str) -> Path:
@@ -298,6 +306,91 @@ class PostprocessService:
         base_image.alpha_composite(layer)
 
     @staticmethod
+    def _apply_qr_phone_card(
+        base_image: Image.Image,
+        qr_path: Path,
+        *,
+        position: str,
+        scale: float,
+        phone_number: str,
+        card_opacity: float,
+    ) -> None:
+        qr_image = Image.open(qr_path).convert("RGBA")
+        image_w, image_h = base_image.size
+        min_dim = min(image_w, image_h)
+
+        qr_size = max(72, min(int(min_dim * scale), int(min_dim * 0.42)))
+        qr_resized = qr_image.resize((qr_size, qr_size), Image.LANCZOS)
+
+        card_padding = max(10, int(qr_size * 0.12))
+        inner_gap = max(6, int(qr_size * 0.08))
+        phone = phone_number.strip()
+        font_size = max(14, int(qr_size * 0.16))
+        font = PostprocessService._load_font(font_size)
+
+        temp = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        temp_draw = ImageDraw.Draw(temp)
+        text_w = 0
+        text_h = 0
+        if phone:
+            text_box = temp_draw.textbbox((0, 0), phone, font=font, stroke_width=0)
+            text_w = max(1, text_box[2] - text_box[0])
+            text_h = max(1, text_box[3] - text_box[1])
+
+        card_w = qr_size + card_padding * 2
+        card_h = qr_size + card_padding * 2
+        if phone:
+            card_h += inner_gap + text_h
+            card_w = max(card_w, text_w + card_padding * 2)
+
+        outer_padding = max(10, int(min_dim * 0.03))
+        x = outer_padding if position == "bottom_left" else image_w - card_w - outer_padding
+        y = image_h - card_h - outer_padding
+        x = max(outer_padding, x)
+        y = max(outer_padding, y)
+
+        layer = Image.new("RGBA", (image_w, image_h), (0, 0, 0, 0))
+        drawer = ImageDraw.Draw(layer)
+        radius = max(10, int(card_w * 0.07))
+        shadow_alpha = max(35, int(90 * card_opacity))
+        bg_alpha = max(80, int(238 * card_opacity))
+        border_alpha = max(25, int(52 * card_opacity))
+
+        drawer.rounded_rectangle(
+            [x + 2, y + 3, x + card_w + 2, y + card_h + 3],
+            radius=radius,
+            fill=(0, 0, 0, shadow_alpha),
+        )
+        drawer.rounded_rectangle(
+            [x, y, x + card_w, y + card_h],
+            radius=radius,
+            fill=(255, 255, 255, bg_alpha),
+            outline=(0, 0, 0, border_alpha),
+            width=max(1, int(card_w * 0.012)),
+        )
+
+        qr_x = x + (card_w - qr_size) // 2
+        qr_y = y + card_padding
+        drawer.rounded_rectangle(
+            [qr_x - 2, qr_y - 2, qr_x + qr_size + 2, qr_y + qr_size + 2],
+            radius=max(4, int(qr_size * 0.05)),
+            fill=(255, 255, 255, min(255, int(250 * card_opacity))),
+        )
+        layer.alpha_composite(qr_resized, (qr_x, qr_y))
+
+        if phone:
+            text_x = x + (card_w - text_w) // 2
+            text_y = qr_y + qr_size + inner_gap
+            drawer.text(
+                (text_x, text_y),
+                phone,
+                font=font,
+                fill=(24, 24, 24, min(255, int(248 * card_opacity))),
+            )
+
+        base_image.alpha_composite(layer)
+
+    @staticmethod
     async def _ensure_local_image_path(generated: dict) -> Path:
         if generated.get("saved_path"):
             file_name = str(generated["saved_path"]).rsplit("/", 1)[-1]
@@ -386,6 +479,9 @@ class PostprocessService:
         logo_file: Optional[Path] = None
         if req.logo_id:
             logo_file = PostprocessService._resolve_logo_file(upload_dir=upload_dir, logo_id=req.logo_id)
+        qr_file: Optional[Path] = None
+        if req.qr_enabled and req.qr_image_id:
+            qr_file = PostprocessService._resolve_qr_file(upload_dir=upload_dir, qr_id=req.qr_image_id)
 
         items: list[dict] = []
         for source_path in req.image_paths:
@@ -429,6 +525,16 @@ class PostprocessService:
                             opacity=req.text_opacity,
                             color=req.text_color,
                             draw_bg=True,
+                        )
+
+                    if qr_file:
+                        PostprocessService._apply_qr_phone_card(
+                            image,
+                            qr_file,
+                            position=req.qr_position,
+                            scale=req.qr_scale,
+                            phone_number=req.phone_number,
+                            card_opacity=req.qr_card_opacity,
                         )
 
                     out_name = f"postprocessed_{uuid.uuid4().hex}.png"

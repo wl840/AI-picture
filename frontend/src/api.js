@@ -24,6 +24,22 @@ export async function uploadLogo(file) {
   return res.json();
 }
 
+export async function uploadQrImage(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/poster/upload-qr`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`二维码上传失败: ${text}`);
+  }
+  return res.json();
+}
+
 export async function uploadProductImage(file) {
   const formData = new FormData();
   formData.append("file", file);

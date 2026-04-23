@@ -123,7 +123,13 @@ class ComicPromptService:
             "3) dialogue must strongly match the visual action.\n"
             "4) dialogue max 20 characters.\n"
             "5) visual_prompt must be drawable: include character, action, and scene.\n"
-            "6) Keep style continuity across panels."
+            "6) Keep style continuity across panels.\n"
+            "7) Each panel must have a clearly different camera framing or action from the previous panel.\n"
+            "8) Never output split-screen, collage, before-after side-by-side, or half-frame comparison.\n"
+            "9) Never output a hard vertical or horizontal lighting split through the frame.\n"
+            "10) Panel 4 must be a single-shot continuation of panel 3, not a comparison collage.\n"
+            "11) Preserve one character identity and one world continuity across panels.\n"
+            "12) No duplicated character clones in the same panel."
         )
 
     @staticmethod
@@ -170,6 +176,10 @@ Hard constraints:
 - No extra keys.
 - dialogue must be <= 20 characters.
 - dialogue must be natural spoken words, not manual/instruction style.
+- Every visual_prompt must include: camera angle, subject action, background anchor, and lighting direction.
+- Do not use split-screen, before-after collage, or half-frame lighting split in any panel.
+- Panel 4 must be a single coherent shot that continues panel 3 with clear narrative progress.
+- If a storyboard beat mentions comparison, express it as a single-scene improvement shot, not a split layout.
 """.strip()
 
     @staticmethod

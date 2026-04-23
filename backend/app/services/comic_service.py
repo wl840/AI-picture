@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import inspect
@@ -137,21 +137,35 @@ def _apply_reference_only_guard(
     ratio_label: str,
     ratio_size: str,
 ) -> str:
-    language_text = "简体中文" if language == "zh-CN" else "English"
+    language_text = "Simplified Chinese" if language == "zh-CN" else "English"
+    dialogue_rule = _dialogue_rule(language=language, text_mode=text_mode)
+
+    panel_specific = ""
+    if panel_index == 4:
+        panel_specific = (
+            "\n[Panel-4 continuity hard rule]\n"
+            "- Panel 4 must be a single coherent shot that continues panel 3 in the same space and timeline.\n"
+            "- Do NOT use before/after split composition.\n"
+            "- Do NOT create a half-frame vertical or horizontal shadow cut.\n"
+            "- Keep the same lighting direction as panel 3, but change pose/action to show narrative progress."
+        )
+
     guard = f"""
-【连续性参考图规则】
-- 第 {panel_index}/{panel_count} 格：若提供上一格参考图，仅用于保持角色、产品、服装道具与世界观一致性。
-- 必须生成新的构图、机位、动作、镜头距离和光影关系，禁止复刻上一格布局或姿势。
-- 禁止复制上一格噪点、压缩伪影、污渍纹理和边缘瑕疵，画面应干净清晰。
-- 与上一格相比必须有明确叙事推进，不可做重复画面。
+[Reference image continuity rules]
+- Panel {panel_index}/{panel_count}: reference images are only for identity continuity (character, product, outfit, world).
+- You must create a NEW composition, NEW camera framing, and NEW action progression versus previous panel.
+- Never duplicate previous panel layout or character pose.
+- No split-screen, no collage, no side-by-side comparison, no hard frame split.
+- No duplicated character clones in one panel.
 
-【语言】{language_text}
-【文字策略】{_dialogue_rule(language=language, text_mode=text_mode)}
+[Language] {language_text}
+[Text policy] {dialogue_rule}
 
-【比例】{ratio_label}（{ratio_size}）
-【硬性限制】
-- 禁止水印、乱码、无关 logo
-- 禁止写实摄影风格
+[Aspect ratio] {ratio_label} ({ratio_size})
+[Hard bans]
+- no watermark, no gibberish, no unrelated logo
+- no photoreal camera style
+{panel_specific}
 """.strip()
     return f"{prompt.strip()}\n\n{guard}"
 

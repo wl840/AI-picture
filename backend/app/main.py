@@ -28,6 +28,7 @@ from .schemas import (
     PostprocessImageResponse,
     UploadLogoResponse,
     UploadProductImageResponse,
+    UploadQrResponse,
 )
 from .services.comic_service import ComicService
 from .services.comic_task_service import ComicTaskService
@@ -76,6 +77,16 @@ async def upload_logo(file: UploadFile = File(...)) -> UploadLogoResponse:
     logo_id, filename = await StorageService.save_logo(file)
     return UploadLogoResponse(
         logo_id=logo_id,
+        filename=filename,
+        url=f"/static/uploads/{filename}",
+    )
+
+
+@app.post("/api/poster/upload-qr", response_model=UploadQrResponse)
+async def upload_qr(file: UploadFile = File(...)) -> UploadQrResponse:
+    qr_id, filename = await StorageService.save_qr_image(file)
+    return UploadQrResponse(
+        qr_id=qr_id,
         filename=filename,
         url=f"/static/uploads/{filename}",
     )

@@ -6,6 +6,7 @@ import {
   postprocessImages,
   toAbsoluteUrl,
   uploadLogo,
+  uploadQrImage,
 } from "../api";
 import ImageLightbox from "../components/ImageLightbox";
 
@@ -21,6 +22,10 @@ const initialForm = {
   watermarkPosition: "bottom_right",
   textContent: "",
   textPosition: "top_left",
+  useQrCard: false,
+  qrPosition: "bottom_right",
+  qrScale: 0.18,
+  qrPhoneNumber: "",
   apiKey: import.meta.env.VITE_DEFAULT_API_KEY || "",
   model: "wan2.7-image-pro",
   baseUrl: DEFAULT_IMAGE_BASE_URL,
@@ -73,6 +78,7 @@ function PostprocessPage() {
   const [images, setImages] = useState([]);
   const [selectedPaths, setSelectedPaths] = useState([]);
   const [logoInfo, setLogoInfo] = useState(null);
+  const [qrInfo, setQrInfo] = useState(null);
   const [loadingList, setLoadingList] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
@@ -116,6 +122,19 @@ function PostprocessPage() {
       setMessage(`Logo 已上传：${uploaded.filename}`);
     } catch (err) {
       setError(err.message || "Logo 上传失败");
+    }
+  };
+
+  const onUploadQr = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      const uploaded = await uploadQrImage(file);
+      setQrInfo(uploaded);
+      setMessage(`二维码已上传：${uploaded.filename}`);
+    } catch (err) {
+      setError(err.message || "二维码上传失败");
     }
   };
 
@@ -175,8 +194,14 @@ function PostprocessPage() {
     }
 
     const hasLogo = form.useLogo && !!logoInfo?.logo_id;
-    if (form.processMode === "local" && !hasLogo && !form.watermarkText.trim() && !form.textContent.trim()) {
-      setError("本地模式下请至少启用一项：Logo、水印或文字。");
+    const hasQrCard = form.useQrCard && !!qrInfo?.qr_id;
+    if (form.processMode === "local" && !hasLogo && !form.watermarkText.trim() && !form.textContent.trim() && !hasQrCard) {
+      setError("本地模式下请至少启用一项：Logo、水印、文字或二维码卡片。");
+      return;
+    }
+
+    if (form.processMode === "local" && form.useQrCard && !hasQrCard) {
+      setError("已启用二维码卡片，请先上传二维码图片。");
       return;
     }
 
@@ -198,6 +223,11 @@ function PostprocessPage() {
         watermark_position: form.watermarkPosition,
         text_content: form.textContent.trim(),
         text_position: form.textPosition,
+        qr_enabled: form.useQrCard,
+        qr_image_id: hasQrCard ? qrInfo.qr_id : null,
+        qr_position: form.qrPosition,
+        qr_scale: Number(form.qrScale) || 0.18,
+        phone_number: form.qrPhoneNumber.trim(),
         api_key: form.apiKey.trim(),
         model: form.model.trim(),
         base_url: form.baseUrl.trim(),
@@ -301,7 +331,43 @@ function PostprocessPage() {
                   <option value="bottom_right">文字：右下角</option>
                   <option value="center">文字：居中</option>
                 </select>
+
+                <label style={{ gridColumn: "1 / -1", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.useQrCard}
+                    onChange={(e) => updateField("useQrCard", e.target.checked)}
+                  />
+                  叠加二维码与电话卡片（仅本地模式）
+                </label>
+
+                <select value={form.qrPosition} onChange={(e) => updateField("qrPosition", e.target.value)}>
+                  <option value="bottom_left">二维码卡片：左下角</option>
+                  <option value="bottom_right">二维码卡片：右下角</option>
+                </select>
+
+                <input type="file" accept="image/*" onChange={onUploadQr} />
+
+                <input
+                  type="text"
+                  placeholder="电话（可选，如 18720155555）"
+                  value={form.qrPhoneNumber}
+                  onChange={(e) => updateField("qrPhoneNumber", e.target.value)}
+                />
+
+                <label style={{ gridColumn: "1 / -1" }}>
+                  二维码卡片尺寸：{Math.round((Number(form.qrScale) || 0.18) * 100)}%
+                  <input
+                    type="range"
+                    min="0.08"
+                    max="0.35"
+                    step="0.01"
+                    value={form.qrScale}
+                    onChange={(e) => updateField("qrScale", Number(e.target.value))}
+                  />
+                </label>
               </div>
+              <p className="tip">{qrInfo ? `二维码已上传：${qrInfo.filename}` : "未上传二维码（可选）"}</p>
             </div>
           ) : (
             <div className="section">
