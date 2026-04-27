@@ -81,6 +81,9 @@ class PostprocessImageRequest(BaseModel):
         max_length=6000,
     )
     ai_ratio_key: Literal["square", "mobile", "landscape"] = Field(default="square")
+    ai_layout_mode: Literal["auto", "single", "comic_4", "comic_6"] = Field(default="auto")
+    ai_title_text: str = Field(default="", max_length=80)
+    ai_cta_text: str = Field(default="", max_length=120)
 
     @field_validator("image_paths")
     @classmethod
@@ -94,10 +97,20 @@ class PostprocessImageRequest(BaseModel):
             raise ValueError("image_paths cannot be empty")
         return normalized
 
-    @field_validator("watermark_text", "text_content", "phone_number")
+    @field_validator("watermark_text", "text_content", "phone_number", "ai_title_text", "ai_cta_text")
     @classmethod
     def normalize_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, value: str) -> str:
+        if not value:
+            return value
+        allowed = set("0123456789+-() ")
+        if any(ch not in allowed for ch in value):
+            raise ValueError("phone_number contains unsupported characters")
+        return value
 
     @field_validator("base_url")
     @classmethod
@@ -114,15 +127,15 @@ class PostprocessImageRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_any_overlay(self) -> "PostprocessImageRequest":
-        if self.process_mode == "ai":
-            if not self.api_key:
-                raise ValueError("api_key is required when process_mode=ai")
-            return self
-
         if self.qr_image_id and not self.qr_enabled:
             self.qr_enabled = True
         if self.qr_enabled and not self.qr_image_id:
             raise ValueError("qr_image_id is required when qr_enabled=true")
+
+        if self.process_mode == "ai":
+            if not self.api_key:
+                raise ValueError("api_key is required when process_mode=ai")
+            return self
 
         if self.logo_id:
             return self

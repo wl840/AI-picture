@@ -71,6 +71,9 @@ const initialForm = {
 - 风格不统一
 - 过高对比导致突兀`,
   aiRatioKey: "square",
+  aiLayoutMode: "auto",
+  aiTitleText: "",
+  aiCtaText: "",
 };
 
 function PostprocessPage() {
@@ -209,6 +212,10 @@ function PostprocessPage() {
       setError("AI 模式需要 API Key。");
       return;
     }
+    if (form.processMode === "ai" && form.useQrCard && !hasQrCard) {
+      setError("AI 模式已启用二维码信息区，请先上传二维码图片。");
+      return;
+    }
 
     setProcessing(true);
     setError("");
@@ -233,6 +240,9 @@ function PostprocessPage() {
         base_url: form.baseUrl.trim(),
         ai_prompt: form.aiPrompt.trim(),
         ai_ratio_key: form.aiRatioKey,
+        ai_layout_mode: form.aiLayoutMode,
+        ai_title_text: form.aiTitleText.trim(),
+        ai_cta_text: form.aiCtaText.trim(),
       });
 
       const success = result?.success_count || 0;
@@ -299,100 +309,108 @@ function PostprocessPage() {
           </div>
 
           {form.processMode === "local" ? (
-            <div className="section">
-              <h2>本地叠加参数</h2>
-              <div className="form-group">
-                <input
-                  type="text"
-                  placeholder="水印文字（可选）"
-                  value={form.watermarkText}
-                  onChange={(e) => updateField("watermarkText", e.target.value)}
-                />
-
-                <select value={form.watermarkPosition} onChange={(e) => updateField("watermarkPosition", e.target.value)}>
-                  <option value="top_left">水印：左上角</option>
-                  <option value="top_right">水印：右上角</option>
-                  <option value="bottom_left">水印：左下角</option>
-                  <option value="bottom_right">水印：右下角</option>
-                  <option value="center">水印：居中</option>
-                </select>
-
-                <input
-                  type="text"
-                  placeholder="自定义文字（可选）"
-                  value={form.textContent}
-                  onChange={(e) => updateField("textContent", e.target.value)}
-                />
-
-                <select value={form.textPosition} onChange={(e) => updateField("textPosition", e.target.value)}>
-                  <option value="top_left">文字：左上角</option>
-                  <option value="top_right">文字：右上角</option>
-                  <option value="bottom_left">文字：左下角</option>
-                  <option value="bottom_right">文字：右下角</option>
-                  <option value="center">文字：居中</option>
-                </select>
-
-                <label style={{ gridColumn: "1 / -1", flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <>
+              <div className="section">
+                <h2>本地叠加参数</h2>
+                <div className="form-group">
                   <input
-                    type="checkbox"
-                    checked={form.useQrCard}
-                    onChange={(e) => updateField("useQrCard", e.target.checked)}
+                    type="text"
+                    placeholder="水印文字（可选）"
+                    value={form.watermarkText}
+                    onChange={(e) => updateField("watermarkText", e.target.value)}
                   />
-                  叠加二维码与电话卡片（仅本地模式）
-                </label>
 
-                <select value={form.qrPosition} onChange={(e) => updateField("qrPosition", e.target.value)}>
-                  <option value="bottom_left">二维码卡片：左下角</option>
-                  <option value="bottom_right">二维码卡片：右下角</option>
-                </select>
+                  <select value={form.watermarkPosition} onChange={(e) => updateField("watermarkPosition", e.target.value)}>
+                    <option value="top_left">水印：左上角</option>
+                    <option value="top_right">水印：右上角</option>
+                    <option value="bottom_left">水印：左下角</option>
+                    <option value="bottom_right">水印：右下角</option>
+                    <option value="center">水印：居中</option>
+                  </select>
 
-                <input type="file" accept="image/*" onChange={onUploadQr} />
-
-                <input
-                  type="text"
-                  placeholder="电话（可选，如 18720155555）"
-                  value={form.qrPhoneNumber}
-                  onChange={(e) => updateField("qrPhoneNumber", e.target.value)}
-                />
-
-                <label style={{ gridColumn: "1 / -1" }}>
-                  二维码卡片尺寸：{Math.round((Number(form.qrScale) || 0.18) * 100)}%
                   <input
-                    type="range"
-                    min="0.08"
-                    max="0.35"
-                    step="0.01"
-                    value={form.qrScale}
-                    onChange={(e) => updateField("qrScale", Number(e.target.value))}
+                    type="text"
+                    placeholder="自定义文字（可选）"
+                    value={form.textContent}
+                    onChange={(e) => updateField("textContent", e.target.value)}
                   />
-                </label>
+
+                  <select value={form.textPosition} onChange={(e) => updateField("textPosition", e.target.value)}>
+                    <option value="top_left">文字：左上角</option>
+                    <option value="top_right">文字：右上角</option>
+                    <option value="bottom_left">文字：左下角</option>
+                    <option value="bottom_right">文字：右下角</option>
+                    <option value="center">文字：居中</option>
+                  </select>
+                </div>
               </div>
-              <p className="tip">{qrInfo ? `二维码已上传：${qrInfo.filename}` : "未上传二维码（可选）"}</p>
-            </div>
+
+              <div className="section">
+                <h2>二维码与联系热线</h2>
+                <div className="form-group">
+                  <label style={{ gridColumn: "1 / -1", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={form.useQrCard}
+                      onChange={(e) => updateField("useQrCard", e.target.checked)}
+                    />
+                    启用二维码信息区
+                  </label>
+
+                  <select value={form.qrPosition} onChange={(e) => updateField("qrPosition", e.target.value)}>
+                    <option value="bottom_left">二维码卡片：左下角</option>
+                    <option value="bottom_right">二维码卡片：右下角</option>
+                  </select>
+
+                  <input type="file" accept="image/*" onChange={onUploadQr} />
+
+                  <input
+                    type="text"
+                    placeholder="电话（可选，如 18720155555）"
+                    value={form.qrPhoneNumber}
+                    onChange={(e) => updateField("qrPhoneNumber", e.target.value)}
+                  />
+
+                  <label style={{ gridColumn: "1 / -1" }}>
+                    二维码卡片尺寸：{Math.round((Number(form.qrScale) || 0.18) * 100)}%
+                    <input
+                      type="range"
+                      min="0.08"
+                      max="0.35"
+                      step="0.01"
+                      value={form.qrScale}
+                      onChange={(e) => updateField("qrScale", Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+                <p className="tip">{qrInfo ? `二维码已上传：${qrInfo.filename}` : "未上传二维码（可选）"}</p>
+              </div>
+            </>
           ) : (
-            <div className="section">
-              <h2>AI 编辑参数</h2>
-              <div className="form-group">
-                <input
-                  type="password"
-                  placeholder="API Key"
-                  value={form.apiKey}
-                  onChange={(e) => updateField("apiKey", e.target.value)}
-                />
+            <>
+              <div className="section">
+                <h2>AI 编辑参数</h2>
+                <div className="form-group">
+                  <input
+                    type="password"
+                    placeholder="API Key"
+                    value={form.apiKey}
+                    onChange={(e) => updateField("apiKey", e.target.value)}
+                  />
 
-                <input
-                  type="text"
-                  placeholder="模型名（如 wan2.7-image-pro）"
-                  value={form.model}
-                  onChange={(e) => updateField("model", e.target.value)}
-                />
+                  <input
+                    type="text"
+                    placeholder="模型名（如 wan2.7-image-pro）"
+                    value={form.model}
+                    onChange={(e) => updateField("model", e.target.value)}
+                  />
 
-                <input
-                  type="text"
-                  placeholder="Base URL"
-                  value={form.baseUrl}
-                  onChange={(e) => updateField("baseUrl", e.target.value)}
-                />
+                  <input
+                    type="text"
+                    placeholder="Base URL"
+                    value={form.baseUrl}
+                    onChange={(e) => updateField("baseUrl", e.target.value)}
+                  />
 
                 <select value={form.aiRatioKey} onChange={(e) => updateField("aiRatioKey", e.target.value)}>
                   <option value="square">1:1</option>
@@ -400,14 +418,77 @@ function PostprocessPage() {
                   <option value="landscape">16:9</option>
                 </select>
 
+                <select value={form.aiLayoutMode} onChange={(e) => updateField("aiLayoutMode", e.target.value)}>
+                  <option value="auto">版式识别：自动</option>
+                  <option value="single">版式识别：单张海报</option>
+                  <option value="comic_4">版式识别：四格漫画</option>
+                  <option value="comic_6">版式识别：六格漫画</option>
+                </select>
+
+                <input
+                  type="text"
+                  placeholder="顶部标题（可选）"
+                  value={form.aiTitleText}
+                  onChange={(e) => updateField("aiTitleText", e.target.value)}
+                />
+
+                <input
+                  type="text"
+                  placeholder="底部引导语（可选）"
+                  value={form.aiCtaText}
+                  onChange={(e) => updateField("aiCtaText", e.target.value)}
+                />
+
                 <textarea
                   placeholder="AI 编辑提示词"
                   value={form.aiPrompt}
                   onChange={(e) => updateField("aiPrompt", e.target.value)}
                 />
               </div>
-              <p className="tip">AI 模式会把原图和 logo 图（如果上传）一起作为参考图发给模型。</p>
+              <p className="tip">AI 模式会自动保护原始核心画面，仅在品牌区融合处理（支持单图/四格/六格）。</p>
             </div>
+
+              <div className="section">
+                <h2>AI 模式：二维码与联系热线</h2>
+                <div className="form-group">
+                  <label style={{ gridColumn: "1 / -1", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={form.useQrCard}
+                      onChange={(e) => updateField("useQrCard", e.target.checked)}
+                    />
+                    启用二维码信息区（AI 生成后叠加）
+                  </label>
+
+                  <select value={form.qrPosition} onChange={(e) => updateField("qrPosition", e.target.value)}>
+                    <option value="bottom_left">二维码卡片：左下角</option>
+                    <option value="bottom_right">二维码卡片：右下角</option>
+                  </select>
+
+                  <input type="file" accept="image/*" onChange={onUploadQr} />
+
+                  <input
+                    type="text"
+                    placeholder="电话（可选，如 18720155555）"
+                    value={form.qrPhoneNumber}
+                    onChange={(e) => updateField("qrPhoneNumber", e.target.value)}
+                  />
+
+                  <label style={{ gridColumn: "1 / -1" }}>
+                    二维码卡片尺寸：{Math.round((Number(form.qrScale) || 0.18) * 100)}%
+                    <input
+                      type="range"
+                      min="0.08"
+                      max="0.35"
+                      step="0.01"
+                      value={form.qrScale}
+                      onChange={(e) => updateField("qrScale", Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+                <p className="tip">{qrInfo ? `二维码已上传：${qrInfo.filename}` : "未上传二维码（可选）"}</p>
+              </div>
+            </>
           )}
 
           {error ? <div className="error-box">{error}</div> : null}

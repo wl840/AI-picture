@@ -43,6 +43,7 @@ class PostprocessService:
 
     _DATA_URI_MAX_BYTES = 10 * 1024 * 1024
     _DATA_URI_SAFE_BYTES = int(_DATA_URI_MAX_BYTES * 0.92)
+    _MAX_REFERENCE_EDGE = 7900
     _JPEG_QUALITIES = (90, 82, 74, 66, 58, 50, 42)
     _RESIZE_FACTORS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4)
 
@@ -93,61 +94,74 @@ class PostprocessService:
 
     @staticmethod
     def _path_to_data_url_limited(path: Path) -> str:
-        raw_data_url = PostprocessService._path_to_data_url(path)
-        if PostprocessService._data_url_size(raw_data_url) <= PostprocessService._DATA_URI_SAFE_BYTES:
-            return raw_data_url
-
         image = Image.open(path)
         try:
             use_png = "A" in image.getbands()
             working = image.convert("RGBA" if use_png else "RGB")
             base_w, base_h = working.size
 
-            best_data_url = raw_data_url
-            best_size = PostprocessService._data_url_size(raw_data_url)
+            edge_scale = min(
+                1.0,
+                PostprocessService._MAX_REFERENCE_EDGE / max(1, base_w),
+                PostprocessService._MAX_REFERENCE_EDGE / max(1, base_h),
+            )
+            if edge_scale < 1.0:
+                constrained_w = max(1, int(base_w * edge_scale))
+                constrained_h = max(1, int(base_h * edge_scale))
+                base_image = working.resize((constrained_w, constrained_h), Image.LANCZOS)
+            else:
+                base_image = working
 
-            for factor in PostprocessService._RESIZE_FACTORS:
-                if factor == 1.0:
-                    candidate = working
-                else:
-                    target_w = max(1, int(base_w * factor))
-                    target_h = max(1, int(base_h * factor))
-                    candidate = working.resize((target_w, target_h), Image.LANCZOS)
+            try:
+                best_data_url = ""
+                best_size = 1 << 60
 
-                try:
-                    if use_png:
-                        buf = io.BytesIO()
-                        candidate.save(buf, format="PNG", optimize=True)
-                        data_url = PostprocessService._build_data_url(buf.getvalue(), "image/png")
-                        size = PostprocessService._data_url_size(data_url)
-                        if size < best_size:
-                            best_data_url = data_url
-                            best_size = size
-                        if size <= PostprocessService._DATA_URI_SAFE_BYTES:
-                            return data_url
+                for factor in PostprocessService._RESIZE_FACTORS:
+                    if factor == 1.0:
+                        candidate = base_image
                     else:
-                        for quality in PostprocessService._JPEG_QUALITIES:
+                        target_w = max(1, int(base_image.size[0] * factor))
+                        target_h = max(1, int(base_image.size[1] * factor))
+                        candidate = base_image.resize((target_w, target_h), Image.LANCZOS)
+
+                    try:
+                        if use_png:
                             buf = io.BytesIO()
-                            candidate.save(
-                                buf,
-                                format="JPEG",
-                                optimize=True,
-                                quality=quality,
-                                progressive=True,
-                            )
-                            data_url = PostprocessService._build_data_url(buf.getvalue(), "image/jpeg")
+                            candidate.save(buf, format="PNG", optimize=True)
+                            data_url = PostprocessService._build_data_url(buf.getvalue(), "image/png")
                             size = PostprocessService._data_url_size(data_url)
                             if size < best_size:
                                 best_data_url = data_url
                                 best_size = size
                             if size <= PostprocessService._DATA_URI_SAFE_BYTES:
                                 return data_url
-                finally:
-                    if candidate is not working:
-                        candidate.close()
+                        else:
+                            for quality in PostprocessService._JPEG_QUALITIES:
+                                buf = io.BytesIO()
+                                candidate.save(
+                                    buf,
+                                    format="JPEG",
+                                    optimize=True,
+                                    quality=quality,
+                                    progressive=True,
+                                )
+                                data_url = PostprocessService._build_data_url(buf.getvalue(), "image/jpeg")
+                                size = PostprocessService._data_url_size(data_url)
+                                if size < best_size:
+                                    best_data_url = data_url
+                                    best_size = size
+                                if size <= PostprocessService._DATA_URI_SAFE_BYTES:
+                                    return data_url
+                    finally:
+                        if candidate is not base_image:
+                            candidate.close()
 
-            if best_size <= PostprocessService._DATA_URI_MAX_BYTES:
-                return best_data_url
+                if best_size <= PostprocessService._DATA_URI_MAX_BYTES:
+                    return best_data_url
+            finally:
+                if base_image is not working:
+                    base_image.close()
+
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -216,6 +230,297 @@ class PostprocessService:
             rgb = (255, 255, 255)
         alpha = max(0, min(255, int(255 * opacity)))
         return rgb[0], rgb[1], rgb[2], alpha
+
+    @staticmethod
+    def _resolve_ai_layout_mode(req_mode: str, image_w: int, image_h: int) -> str:
+        if req_mode in {"single", "comic_4", "comic_6"}:
+            return req_mode
+        ratio = image_h / max(1, image_w)
+        if ratio >= 2.0:
+            return "comic_6"
+        if ratio >= 1.25:
+            return "comic_4"
+        if ratio <= 0.72:
+            return "comic_6"
+        if ratio <= 0.95:
+            return "comic_4"
+        return "single"
+
+    @staticmethod
+    def _sample_avg_color(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[int, int, int]:
+        x1, y1, x2, y2 = box
+        x1 = max(0, min(image.width - 1, x1))
+        y1 = max(0, min(image.height - 1, y1))
+        x2 = max(x1 + 1, min(image.width, x2))
+        y2 = max(y1 + 1, min(image.height, y2))
+        region = image.crop((x1, y1, x2, y2)).convert("RGB")
+        avg = region.resize((1, 1), Image.Resampling.BILINEAR).getpixel((0, 0))
+        return int(avg[0]), int(avg[1]), int(avg[2])
+
+    @staticmethod
+    def _build_ai_brand_canvas(source_path: Path, req: PostprocessImageRequest) -> tuple[Path, dict]:
+        src = Image.open(source_path).convert("RGB")
+        try:
+            src_w, src_h = src.size
+            layout_mode = PostprocessService._resolve_ai_layout_mode(req.ai_layout_mode, src_w, src_h)
+            if layout_mode == "comic_6":
+                top_ratio, bottom_ratio = 0.15, 0.23
+            elif layout_mode == "comic_4":
+                top_ratio, bottom_ratio = 0.13, 0.20
+            else:
+                top_ratio, bottom_ratio = 0.14, 0.18
+
+            top_margin = max(88, int(src_h * top_ratio))
+            bottom_margin = max(120, int(src_h * bottom_ratio))
+            canvas_w = src_w
+            canvas_h = src_h + top_margin + bottom_margin
+
+            top_color = PostprocessService._sample_avg_color(src, (0, 0, src_w, max(1, int(src_h * 0.12))))
+            bottom_color = PostprocessService._sample_avg_color(
+                src,
+                (0, max(0, int(src_h * 0.88)), src_w, src_h),
+            )
+            mix = (
+                (top_color[0] + bottom_color[0]) // 2,
+                (top_color[1] + bottom_color[1]) // 2,
+                (top_color[2] + bottom_color[2]) // 2,
+            )
+            top_fill = tuple(min(255, int(v * 0.92 + 36)) for v in mix)
+            bottom_fill = tuple(min(255, int(v * 0.88 + 44)) for v in mix)
+
+            canvas = Image.new("RGB", (canvas_w, canvas_h), color=top_fill)
+            draw = ImageDraw.Draw(canvas)
+            for y in range(canvas_h):
+                t = y / max(1, canvas_h - 1)
+                row = (
+                    int(top_fill[0] * (1 - t) + bottom_fill[0] * t),
+                    int(top_fill[1] * (1 - t) + bottom_fill[1] * t),
+                    int(top_fill[2] * (1 - t) + bottom_fill[2] * t),
+                )
+                draw.line((0, y, canvas_w, y), fill=row)
+
+            canvas.paste(src, (0, top_margin))
+            divider_color = tuple(max(0, int(v * 0.72)) for v in mix)
+            draw.line((0, top_margin, canvas_w, top_margin), fill=divider_color, width=max(1, int(canvas_w * 0.002)))
+            draw.line(
+                (0, top_margin + src_h, canvas_w, top_margin + src_h),
+                fill=divider_color,
+                width=max(1, int(canvas_w * 0.002)),
+            )
+
+            pad = max(12, int(canvas_w * 0.03))
+            top_band_h = max(28, top_margin - pad * 2)
+            bottom_band_h = max(56, bottom_margin - pad * 2)
+            logo_w = max(120, int(canvas_w * 0.24))
+            logo_h = max(42, int(top_band_h * 0.72))
+            qr_size = max(96, min(int(bottom_band_h * 0.72), int(canvas_w * 0.24)))
+            hotline_h = max(28, int(bottom_band_h * 0.26))
+            hotline_w = max(160, int(canvas_w * 0.30))
+            gap = max(12, int(canvas_w * 0.02))
+
+            meta = {
+                "layout_mode": layout_mode,
+                "core_rect": [0, top_margin, src_w, src_h],
+                "logo_safe_rects": {
+                    "top_left": [pad, pad, logo_w, logo_h],
+                    "top_right": [canvas_w - pad - logo_w, pad, logo_w, logo_h],
+                    "bottom_left": [pad, top_margin + src_h + pad, logo_w, logo_h],
+                    "bottom_right": [canvas_w - pad - logo_w, top_margin + src_h + pad, logo_w, logo_h],
+                },
+                "qr_safe_rects": {
+                    "bottom_left": [pad, canvas_h - pad - qr_size, qr_size, qr_size],
+                    "bottom_right": [canvas_w - pad - qr_size, canvas_h - pad - qr_size, qr_size, qr_size],
+                },
+                "hotline_safe_rects": {
+                    "bottom_left": [pad + qr_size + gap, canvas_h - pad - hotline_h, hotline_w, hotline_h],
+                    "bottom_right": [canvas_w - pad - qr_size - gap - hotline_w, canvas_h - pad - hotline_h, hotline_w, hotline_h],
+                },
+            }
+
+            GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+            out_path = GENERATED_DIR / f"postprocess_ai_canvas_{uuid.uuid4().hex}.png"
+            canvas.save(out_path, format="PNG", optimize=True)
+            canvas.close()
+            return out_path, meta
+        finally:
+            src.close()
+
+    @staticmethod
+    def _restore_protected_core(ai_result_path: Path, protected_canvas_path: Path, meta: dict) -> Path:
+        ai_image = Image.open(ai_result_path).convert("RGBA")
+        protected = Image.open(protected_canvas_path).convert("RGBA")
+        try:
+            if ai_image.size != protected.size:
+                ai_image = ai_image.resize(protected.size, Image.Resampling.LANCZOS)
+
+            core = meta.get("core_rect") or [0, 0, protected.width, protected.height]
+            x, y, w, h = int(core[0]), int(core[1]), int(core[2]), int(core[3])
+            x = max(0, min(protected.width - 1, x))
+            y = max(0, min(protected.height - 1, y))
+            w = max(1, min(protected.width - x, w))
+            h = max(1, min(protected.height - y, h))
+
+            protected_crop = protected.crop((x, y, x + w, y + h))
+            ai_image.paste(protected_crop, (x, y))
+            protected_crop.close()
+
+            out_path = GENERATED_DIR / f"postprocess_ai_locked_{uuid.uuid4().hex}.png"
+            ai_image.convert("RGB").save(out_path, format="PNG", optimize=True)
+            return out_path
+        finally:
+            ai_image.close()
+            protected.close()
+
+    @staticmethod
+    def _build_ai_brand_prompt(req: PostprocessImageRequest, *, has_logo: bool, has_qr: bool, layout_mode: str) -> str:
+        logo_clause = (
+            f"Use provided logo and place exactly one at {PostprocessService._LOGO_POSITION_EN.get(req.logo_position, 'top-right')}."
+            if has_logo
+            else "No logo image is provided; reserve a clean logo placeholder area."
+        )
+        qr_clause = (
+            f"Reserve QR zone at {req.qr_position.replace('_', '-')} area."
+            if has_qr
+            else "Do not add QR code if not provided."
+        )
+        title = req.ai_title_text or "【轻享新生活】·你的夏日新宠"
+        cta = req.ai_cta_text or "扫码即刻体验，开启新篇章！"
+
+        protocol = (
+            "Brand Integration Poster Protocol:\n"
+            f"- Input layout mode: {layout_mode}.\n"
+            "- Preserve the original core image content strictly: character identity, scene objects, panel structure, all Chinese dialogue text.\n"
+            "- DO NOT alter core storytelling frames, composition, or speech bubble text.\n"
+            "- Only edit branding zones (top and bottom bands) with commercial layout quality.\n"
+            f"- Target headline (for local render only): {title}\n"
+            f"- Target CTA (for local render only): {cta}\n"
+            f"- {logo_clause}\n"
+            f"- {qr_clause}\n"
+            f"- Target hotline text (for local render only): {req.phone_number or 'placeholder'}.\n"
+            "- IMPORTANT: do NOT generate any new readable text, numbers, QR patterns, or logos in the image.\n"
+            "- Leave clean readable spaces for local text rendering in top and bottom branding zones.\n"
+            "- Style: elegant, soft, watercolor-retro consistency with ambient occlusion and subtle highlight/reflection.\n"
+            "- Avoid: hard cut stickers,乱码, irrelevant watermarks/icons, duplicated logos."
+        )
+        user_prompt = req.ai_prompt.strip()
+        if user_prompt:
+            return f"{user_prompt}\n\n{protocol}"
+        return protocol
+
+    @staticmethod
+    def _fit_text_in_rect(
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        *,
+        max_w: int,
+        max_h: int,
+        max_size: int,
+        min_size: int = 14,
+    ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+        for size in range(max_size, min_size - 1, -2):
+            font = PostprocessService._load_font(size)
+            box = draw.textbbox((0, 0), text, font=font, stroke_width=max(1, size // 16))
+            w = max(1, box[2] - box[0])
+            h = max(1, box[3] - box[1])
+            if w <= max_w and h <= max_h:
+                return font
+        return PostprocessService._load_font(min_size)
+
+    @staticmethod
+    def _draw_text_in_rect(
+        image: Image.Image,
+        *,
+        rect: tuple[int, int, int, int],
+        text: str,
+        color: tuple[int, int, int, int],
+        stroke_color: tuple[int, int, int, int],
+    ) -> None:
+        if not text.strip():
+            return
+        x, y, w, h = rect
+        if w <= 4 or h <= 4:
+            return
+        layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+        font = PostprocessService._fit_text_in_rect(
+            draw,
+            text,
+            max_w=max(1, w - 8),
+            max_h=max(1, h - 8),
+            max_size=max(18, int(h * 0.62)),
+            min_size=14,
+        )
+        box = draw.textbbox((0, 0), text, font=font, stroke_width=max(1, font.size // 16))
+        tw = max(1, box[2] - box[0])
+        th = max(1, box[3] - box[1])
+        tx = x + max(0, (w - tw) // 2)
+        ty = y + max(0, (h - th) // 2)
+        draw.text(
+            (tx, ty),
+            text,
+            font=font,
+            fill=color,
+            stroke_width=max(1, font.size // 16),
+            stroke_fill=stroke_color,
+        )
+        image.alpha_composite(layer)
+
+    @staticmethod
+    def _draw_ai_brand_texts(
+        image: Image.Image,
+        *,
+        req: PostprocessImageRequest,
+        layout_meta: dict,
+        has_qr: bool,
+    ) -> None:
+        title_text = (req.ai_title_text or "【轻享新生活】·你的夏日新宠").strip()
+        cta_text = (req.ai_cta_text or "扫码即刻体验，开启新篇章！").strip()
+        hotline = req.phone_number.strip()
+
+        core = layout_meta.get("core_rect") or [0, 0, image.width, image.height]
+        try:
+            core_x, core_y, core_w, core_h = (int(core[0]), int(core[1]), int(core[2]), int(core[3]))
+        except (TypeError, ValueError):
+            core_x, core_y, core_w, core_h = 0, 0, image.width, image.height
+
+        pad = max(12, int(image.width * 0.03))
+        title_rect = (pad, pad, max(1, image.width - pad * 2), max(24, core_y - pad * 2))
+        bottom_band_top = core_y + core_h
+        cta_height = max(30, int((image.height - bottom_band_top) * 0.35))
+        cta_rect = (pad, bottom_band_top + pad, max(1, image.width - pad * 2), max(24, cta_height - pad))
+
+        text_color = (28, 28, 28, 240)
+        text_stroke = (255, 255, 255, 215)
+        PostprocessService._draw_text_in_rect(
+            image,
+            rect=title_rect,
+            text=title_text,
+            color=text_color,
+            stroke_color=text_stroke,
+        )
+        PostprocessService._draw_text_in_rect(
+            image,
+            rect=cta_rect,
+            text=cta_text,
+            color=text_color,
+            stroke_color=text_stroke,
+        )
+
+        if has_qr or not hotline:
+            return
+
+        hotline_rects = layout_meta.get("hotline_safe_rects")
+        if isinstance(hotline_rects, dict):
+            raw = hotline_rects.get(req.qr_position) or hotline_rects.get("bottom_right")
+            if isinstance(raw, list) and len(raw) == 4:
+                hx, hy, hw, hh = (int(raw[0]), int(raw[1]), int(raw[2]), int(raw[3]))
+                PostprocessService._draw_text_in_rect(
+                    image,
+                    rect=(hx, hy, hw, hh),
+                    text=f"热线号码 {hotline}",
+                    color=text_color,
+                    stroke_color=text_stroke,
+                )
 
     @staticmethod
     def _apply_logo(
@@ -415,23 +720,44 @@ class PostprocessService:
         req: PostprocessImageRequest,
         source_path: Path,
         logo_file: Optional[Path],
+        qr_file: Optional[Path],
     ) -> str:
-        references = [PostprocessService._path_to_data_url(source_path)]
-        if logo_file:
-            references.append(PostprocessService._path_to_data_url(logo_file))
+        prepared_canvas_path, layout_meta = PostprocessService._build_ai_brand_canvas(source_path, req)
+        prepared = Image.open(prepared_canvas_path).convert("RGBA")
+        try:
+            if logo_file:
+                PostprocessService._apply_logo(
+                    prepared,
+                    logo_file,
+                    position=req.logo_position,
+                    scale=req.logo_scale,
+                    opacity=req.logo_opacity,
+                )
+            if qr_file and req.qr_enabled:
+                PostprocessService._apply_qr_phone_card(
+                    prepared,
+                    qr_file,
+                    position=req.qr_position,
+                    scale=req.qr_scale,
+                    phone_number=req.phone_number,
+                    card_opacity=req.qr_card_opacity,
+                )
+            prepared.convert("RGB").save(prepared_canvas_path, format="PNG", optimize=True)
+        finally:
+            prepared.close()
 
-        prompt = req.ai_prompt.strip()
+        references = [PostprocessService._path_to_data_url_limited(prepared_canvas_path)]
         if logo_file:
-            position_en = PostprocessService._LOGO_POSITION_EN.get(req.logo_position, "bottom-right")
-            position_zh = PostprocessService._LOGO_POSITION_ZH.get(req.logo_position, "右下角")
-            prompt = (
-                f"{prompt}\n"
-                "Two reference images are provided: first is the original image, second is the logo image. "
-                "Keep the original composition and style, and blend the logo naturally. "
-                f"Place exactly one logo at the {position_en} corner with a small margin from edges, "
-                "do not place it in other corners.\n"
-                f"请将 logo 固定放在{position_zh}，与画面边缘保持小间距，只出现一个 logo，不要放在其他位置。"
-            )
+            references.append(PostprocessService._path_to_data_url_limited(logo_file))
+        if qr_file:
+            references.append(PostprocessService._path_to_data_url_limited(qr_file))
+
+        prompt = PostprocessService._build_ai_brand_prompt(
+            req,
+            has_logo=bool(logo_file),
+            has_qr=bool(qr_file and req.qr_enabled),
+            layout_mode=str(layout_meta.get("layout_mode") or "single"),
+        )
 
         try:
             generated = await ImageProviderService.generate_image(
@@ -446,10 +772,11 @@ class PostprocessService:
         except HTTPException as exc:
             if not PostprocessService._is_data_uri_too_large_error(exc):
                 raise
-
-            compressed_refs = [PostprocessService._path_to_data_url_limited(source_path)]
+            compressed_refs = [PostprocessService._path_to_data_url_limited(prepared_canvas_path)]
             if logo_file:
                 compressed_refs.append(PostprocessService._path_to_data_url_limited(logo_file))
+            if qr_file:
+                compressed_refs.append(PostprocessService._path_to_data_url_limited(qr_file))
 
             generated = await ImageProviderService.generate_image(
                 api_key=req.api_key or "",
@@ -461,7 +788,24 @@ class PostprocessService:
                 reference_images_data_urls=compressed_refs,
             )
         local_path = await PostprocessService._ensure_local_image_path(generated)
-        return f"/static/generated/{local_path.name}"
+        locked_path = PostprocessService._restore_protected_core(
+            ai_result_path=local_path,
+            protected_canvas_path=prepared_canvas_path,
+            meta=layout_meta,
+        )
+        final_image = Image.open(locked_path).convert("RGBA")
+        try:
+            PostprocessService._draw_ai_brand_texts(
+                final_image,
+                req=req,
+                layout_meta=layout_meta,
+                has_qr=bool(qr_file and req.qr_enabled),
+            )
+            out_path = GENERATED_DIR / f"postprocess_ai_texted_{uuid.uuid4().hex}.png"
+            final_image.convert("RGB").save(out_path, format="PNG", optimize=True)
+        finally:
+            final_image.close()
+        return f"/static/generated/{out_path.name}"
 
     @staticmethod
     def list_generated_images(limit: int = 200) -> list[dict]:
@@ -492,7 +836,26 @@ class PostprocessService:
                         req=req,
                         source_path=local_source,
                         logo_file=logo_file,
+                        qr_file=qr_file,
                     )
+                    if qr_file:
+                        ai_image_path = PostprocessService._resolve_source_path(saved_path)
+                        ai_image = Image.open(ai_image_path).convert("RGBA")
+                        try:
+                            PostprocessService._apply_qr_phone_card(
+                                ai_image,
+                                qr_file,
+                                position=req.qr_position,
+                                scale=req.qr_scale,
+                                phone_number=req.phone_number,
+                                card_opacity=req.qr_card_opacity,
+                            )
+                            out_name = f"postprocessed_ai_{uuid.uuid4().hex}.png"
+                            out_path = GENERATED_DIR / out_name
+                            ai_image.convert("RGB").save(out_path, format="PNG", optimize=True)
+                            saved_path = f"/static/generated/{out_name}"
+                        finally:
+                            ai_image.close()
                 else:
                     image = Image.open(local_source).convert("RGBA")
 
